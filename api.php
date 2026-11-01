@@ -55,7 +55,7 @@ if ($method==='POST') {
   if (str_starts_with($contentType,'application/json')) { $raw=file_get_contents('php://input',false,null,0,16385); if(strlen($raw)>16384) fail('La solicitud es demasiado grande.',413); $input=json_decode($raw,true); if(!is_array($input)) fail('Solicitud inválida.'); } else $input=$_POST;
 } elseif ($method!=='GET') fail('Método no permitido.',405);
 handleEmailAction($action,$method,$input??[]);
-if ($action==='health' && $method==='GET') reply(['ready'=>true,'images'=>function_exists('imagecreatefromstring'),'email'=>function_exists('mail'),'version'=>3]);
+if ($action==='health' && $method==='GET') reply(['ready'=>true,'images'=>function_exists('imagecreatefromstring'),'email'=>function_exists('mail'),'version'=>4]);
 if ($action==='session' && $method==='GET') reply(['user'=>user(),'csrf'=>$_SESSION['csrf']]);
 if ($action==='register' && $method==='POST') {
   limitRate('register',8,3600);
@@ -83,6 +83,7 @@ if ($action==='recover' && $method==='POST') {
   $u=query('SELECT * FROM users WHERE email=?',[$email])->fetch(); if(!$u || !password_verify($code,$u['recovery'])) fail('Correo o código de recuperación incorrectos.',401);
   $newCode=bin2hex(random_bytes(16)); query('UPDATE users SET password=?,recovery=? WHERE id=?',[password_hash($password,PASSWORD_DEFAULT),password_hash($newCode,PASSWORD_DEFAULT),$u['id']]);
   query('UPDATE email_tokens SET used=? WHERE user_id=? AND used IS NULL',[time(),$u['id']]);
+  query('UPDATE email_codes SET used=? WHERE user_id=? AND used IS NULL',[time(),$u['id']]);
   // Revoke all active sessions for this account by rotating its credential fingerprint.
   session_regenerate_id(true); $_SESSION['uid']=(int)$u['id']; $_SESSION['auth']=hash('sha256',(string)query('SELECT password FROM users WHERE id=?',[$u['id']])->fetchColumn()); $_SESSION['csrf']=bin2hex(random_bytes(32)); reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'recovery'=>$newCode]);
 }

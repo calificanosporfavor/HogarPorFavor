@@ -27,17 +27,17 @@ document.querySelectorAll('[data-privacy]').forEach(b=>b.addEventListener('click
 $('#privacy-open').addEventListener('click',()=>$('#privacy-dialog').showModal());
 function setAuthMode(next){
  authMode=next;auth.reset();$('#auth-status').textContent='';
- const register=next==='register',recover=next==='recover',forgot=next==='forgot',reset=next==='reset';
+ const register=next==='register',recover=next==='recover',forgot=next==='forgot',reset=next==='reset',codeReset=next==='code-reset';
  $('#name-label').hidden=!register;auth.elements.name.required=register;
  $('#privacy-check').hidden=!register;auth.elements.privacy.required=register;
- $('#recovery-label').hidden=!recover;auth.elements.code.required=recover;
+ $('#recovery-label').hidden=!(recover||codeReset);auth.elements.code.required=recover||codeReset;auth.elements.code.minLength=codeReset?6:32;auth.elements.code.maxLength=codeReset?6:32;auth.elements.code.pattern=codeReset?'[0-9]{6}':'.{32}';auth.elements.code.inputMode=codeReset?'numeric':'text';auth.elements.code.autocomplete=codeReset?'one-time-code':'off';
  $('#password-wrapper').hidden=forgot;auth.elements.password.required=!forgot;
  auth.elements.email.required=!reset;auth.elements.email.closest('label').hidden=reset;
- $('#password-help').hidden=!(register||recover||reset);auth.elements.password.minLength=register||recover||reset?12:1;
+ $('#password-help').hidden=!(register||recover||reset||codeReset);auth.elements.password.minLength=register||recover||reset||codeReset?12:1;
  auth.elements.password.autocomplete=next==='login'?'current-password':'new-password';
- $('#password-label').textContent=recover||reset?'Nueva contraseña':'Contraseña';
- $('#auth-title').textContent=forgot?'Recupera tu acceso.':reset?'Elige una nueva contraseña.':'Tu próximo comienzo.';
- $('#auth-submit').textContent=register?'Crear cuenta gratis ↗':recover?'Recuperar cuenta ↗':forgot?'Enviar enlace por correo ↗':reset?'Guardar contraseña ↗':'Entrar ↗';
+ $('#password-label').textContent=recover||reset||codeReset?'Nueva contraseña':'Contraseña';
+ $('#auth-title').textContent=forgot?'Recupera tu acceso.':reset||codeReset?'Elige una nueva contraseña.':'Tu próximo comienzo.';
+ $('#auth-submit').textContent=register?'Crear cuenta gratis ↗':recover?'Recuperar cuenta ↗':forgot?'Enviar código por correo ↗':reset||codeReset?'Guardar contraseña ↗':'Entrar ↗';
  document.querySelectorAll('.auth-tabs button').forEach(b=>b.classList.toggle('selected',b.dataset.auth===next));
 }
 document.querySelectorAll('[data-auth]').forEach(b=>b.addEventListener('click',()=>setAuthMode(b.dataset.auth)));
@@ -45,7 +45,8 @@ async function needAuth(callback){try{await sessionReady;if(currentUser)return c
 $('#account-open').addEventListener('click',()=>needAuth(showAccount));
 auth.addEventListener('submit',e=>{e.preventDefault();busy(auth,async()=>{
  const values=Object.fromEntries(new FormData(auth));values.privacy=auth.elements.privacy.checked;
- if(authMode==='forgot'){const data=await api('forgot-password',{email:values.email});$('#auth-status').textContent=data.message;return;}
+ if(authMode==='forgot'){const data=await api('forgot-password',{email:values.email});setAuthMode('code-reset');auth.elements.email.value=values.email;$('#auth-status').textContent=data.message;auth.elements.code.focus();return;}
+ if(authMode==='code-reset'){const data=await api('reset-code',{email:values.email,code:values.code,password:values.password});currentUser=null;updateAccount();setAuthMode('login');$('#auth-status').textContent=data.message;return;}
  if(authMode==='reset'){const data=await api('reset-password',{token:emailLinkToken,password:values.password});emailLinkToken='';currentUser=null;updateAccount();setAuthMode('login');$('#auth-status').textContent=data.message;return;}
  const data=await api(authMode,values);currentUser=data.user;updateAccount();auth.reset();
  if(authMode==='register'){showEmailPending(data.message);return;}
@@ -76,8 +77,8 @@ sessionReady.then(()=>{loadProperties();handleIncomingEmailLink();const id=new U
 
 function showEmailPending(message=''){
  $('#email-title').textContent='Confirma tu correo.';
- $('#email-description').textContent=currentUser?'Enviaremos el enlace a '+currentUser.email+'. Revisa tu bandeja de entrada y spam. El enlace vence en 24 horas.':'Inicia sesión para solicitar un nuevo enlace de confirmación.';
- $('#email-confirm').hidden=true;$('#email-check').hidden=!currentUser;$('#email-resend').hidden=!currentUser;
+ $('#email-description').textContent=currentUser?'Escribe el código enviado a '+currentUser.email+'. Revisa también spam. El código vence en 10 minutos.':'Inicia sesión para solicitar un código de confirmación.';
+ $('#email-code-form').hidden=!currentUser;$('#email-code-form').reset();$('#email-confirm').hidden=true;$('#email-check').hidden=true;$('#email-resend').hidden=!currentUser;document.querySelectorAll('.email-next').forEach(b=>b.remove());
  $('#email-status').textContent=message;openDialog('#email-dialog');
 }
 function renderEmailAccountStatus(){
@@ -90,12 +91,12 @@ function handleIncomingEmailLink(){
  if(!/^[a-f0-9]{64}$/.test(emailLinkToken)){notify('El enlace no es válido. Solicita uno nuevo desde tu cuenta.');return;}
  if(emailLinkPurpose==='reset'){setAuthMode('reset');openDialog('#auth-dialog');return;}
  $('#email-title').textContent='Confirma tu correo.';$('#email-description').textContent='Pulsa el botón para confirmar la dirección de correo a la que enviamos este enlace.';
- $('#email-confirm').hidden=false;$('#email-check').hidden=true;$('#email-resend').hidden=true;$('#email-status').textContent='';openDialog('#email-dialog');
+ $('#email-code-form').hidden=true;$('#email-confirm').hidden=false;$('#email-check').hidden=true;$('#email-resend').hidden=true;$('#email-status').textContent='';openDialog('#email-dialog');
 }
 $('#email-confirm').addEventListener('click',async()=>{
  const b=$('#email-confirm');b.disabled=true;$('#email-status').textContent='Confirmando…';
  try{const data=await api('verify-email',{token:emailLinkToken});emailLinkToken='';currentUser=data.user;updateAccount();$('#email-status').textContent=data.message;b.hidden=true;
- const next=document.createElement('button');next.className='button full';next.textContent=currentUser?'Ir a mi cuenta ↗':'Iniciar sesión ↗';next.addEventListener('click',()=>{next.remove();if(currentUser)showAccount();else{setAuthMode('login');openDialog('#auth-dialog');}});$('#email-status').after(next);
+ const next=document.createElement('button');next.className='button full email-next';next.textContent=currentUser?'Ir a mi cuenta ↗':'Iniciar sesión ↗';next.addEventListener('click',()=>{next.remove();if(currentUser)showAccount();else{setAuthMode('login');openDialog('#auth-dialog');}});$('#email-status').after(next);
  }catch(e){$('#email-status').textContent=e.message;if(currentUser){$('#email-resend').hidden=false;}}finally{b.disabled=false;}
 });
 $('#email-resend').addEventListener('click',async()=>{
@@ -108,3 +109,5 @@ $('#email-check').addEventListener('click',async()=>{
  else $('#email-status').textContent='Aún no se ha confirmado el correo. Abre el enlace del mensaje y pulsa Confirmar correo.';
  }catch(e){$('#email-status').textContent=e.message;}
 });
+
+$('#email-code-form').addEventListener('submit',e=>{e.preventDefault();busy($('#email-code-form'),async()=>{const code=$('#email-code-form').elements.code.value;const data=await api('verify-code',{code});currentUser=data.user;updateAccount();const next=afterAuth;afterAuth=null;notify(data.message);if(next)await next();else await showAccount();},$('#email-status'));});
