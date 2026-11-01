@@ -1,5 +1,9 @@
 DirectoryIndex index.html
 Options -Indexes
+<FilesMatch "^(\.(git|env|user\.ini)|.*\.(sqlite|sqlite-wal|sqlite-shm|log))$">
+Require all denied
+</FilesMatch>
+RedirectMatch 404 /\.git(?:/|$)
 <IfModule mod_headers.c>
 Header set X-Content-Type-Options "nosniff"
 Header set Referrer-Policy "strict-origin-when-cross-origin"
