@@ -18,4 +18,4 @@ Servir la carpeta con un servidor estático. No necesita npm install. Ejecutar `
 
 Logo y favicon proporcionados por el propietario. Fotografía: Unsplash, https://images.unsplash.com/photo-1600596542815-ffad4c1539a9 . Tipografías DM Sans y Manrope servidas por Google Fonts; Arial como alternativa.
 
-El repositorio no configura sincronización automática con Hostinger. Los cambios se despliegan por carga de archivos o mediante la función Git de hPanel cuando esté configurada.
+Hostinger está conectado al repositorio calificanosporfavor/HogarPorFavor, rama main, con destino public_html de hogarporfavor.com. Revisar el interruptor Auto-deployment en hPanel para el despliegue automático; también se puede usar Redeploy. El sitio reutiliza el espacio que antes ocupaba AgroPorFavor. Los archivos anteriores se conservaron fuera de public_html y en una copia ZIP local antes de publicar.
