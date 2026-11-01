@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://hogarporfavor.com/sitemap.xml
