@@ -4,10 +4,10 @@ const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const money = n => new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',maximumFractionDigits:0}).format(n);
 let currentUser=null,csrf='',mode='Renta',authMode='login',afterAuth=null,recoveryCode='',sequence=0,previewURLs=[],shownMine=[];
 const auth=$('#auth-form'), publish=$('#publish-form');
-const incomingEmailLink = new URLSearchParams(location.hash.slice(1));
-let emailLinkToken=incomingEmailLink.get('verify')||incomingEmailLink.get('reset')||'';
-const emailLinkPurpose=incomingEmailLink.has('verify')?'verify':incomingEmailLink.has('reset')?'reset':'';
-if(emailLinkPurpose)history.replaceState(null,'',location.pathname+location.search);
+let emailLinkToken='',emailLinkPurpose='';
+function consumeEmailFragment(){const params=new URLSearchParams(location.hash.slice(1));const purpose=params.has('verify')?'verify':params.has('reset')?'reset':'';if(!purpose)return false;emailLinkPurpose=purpose;emailLinkToken=params.get(purpose)||'';history.replaceState(null,'',location.pathname+location.search);return true;}
+consumeEmailFragment();
+window.addEventListener('hashchange',()=>{if(consumeEmailFragment())sessionReady.then(handleIncomingEmailLink).catch(e=>notify(e.message));});
 $('#year').textContent=new Date().getFullYear();
 function notify(message){$('#toast').textContent=message;$('#toast').hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$('#toast').hidden=true,6000);}
 function closeDialogs(){document.querySelectorAll('dialog[open]').forEach(d=>d.close());}
