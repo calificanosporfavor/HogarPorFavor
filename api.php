@@ -34,8 +34,11 @@ CREATE TABLE IF NOT EXISTS photos (id TEXT PRIMARY KEY, property_id TEXT NOT NUL
 CREATE TABLE IF NOT EXISTS limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY, property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, reason TEXT NOT NULL, created INTEGER NOT NULL, UNIQUE(property_id,user_id));
 CREATE INDEX IF NOT EXISTS property_status_created ON properties(status,created);');
+define('HOGAR_INTERNAL',true);
+require __DIR__.'/auth-mail.php';
+migrateEmail();
 function query(string $sql,array $params=[]): PDOStatement { global $db; $s=$db->prepare($sql); $s->execute($params); return $s; }
-function user(): ?array { if (!isset($_SESSION['uid'])) return null; $u=query('SELECT id,name,email,password FROM users WHERE id=?',[(int)$_SESSION['uid']])->fetch(); if(!$u||!hash_equals(hash('sha256',$u['password']),(string)($_SESSION['auth']??''))){unset($_SESSION['uid'],$_SESSION['auth']);return null;}unset($u['password']);return $u; }
+function user(): ?array { if (!isset($_SESSION['uid'])) return null; $u=query('SELECT id,name,email,password,email_verified_at FROM users WHERE id=?',[(int)$_SESSION['uid']])->fetch(); if(!$u||!hash_equals(hash('sha256',$u['password']),(string)($_SESSION['auth']??''))){unset($_SESSION['uid'],$_SESSION['auth']);return null;}$u['email_verified']=$u['email_verified_at']!==null;unset($u['password'],$u['email_verified_at']);return $u; }
 function requireUser(): array { return user() ?? fail('Inicia sesión para continuar.',401); }
 function strvalInput(array $input,string $name,int $min,int $max): string { $v=$input[$name]??''; if (!is_string($v)) fail('Revisa el campo '.$name.'.'); $v=trim($v); if(mb_strlen($v)<$min||mb_strlen($v)>$max) fail('Revisa el campo '.$name.'.'); return $v; }
 function integerInput(array $input,string $name,int $min,int $max): int { $v=filter_var($input[$name]??null,FILTER_VALIDATE_INT); if($v===false||$v<$min||$v>$max) fail('Revisa el campo '.$name.'.'); return $v; }
@@ -51,7 +54,8 @@ if ($method==='POST') {
   $contentType=$_SERVER['CONTENT_TYPE']??'';
   if (str_starts_with($contentType,'application/json')) { $raw=file_get_contents('php://input',false,null,0,16385); if(strlen($raw)>16384) fail('La solicitud es demasiado grande.',413); $input=json_decode($raw,true); if(!is_array($input)) fail('Solicitud inválida.'); } else $input=$_POST;
 } elseif ($method!=='GET') fail('Método no permitido.',405);
-if ($action==='health' && $method==='GET') reply(['ready'=>true,'images'=>function_exists('imagecreatefromstring'),'version'=>2]);
+handleEmailAction($action,$method,$input??[]);
+if ($action==='health' && $method==='GET') reply(['ready'=>true,'images'=>function_exists('imagecreatefromstring'),'email'=>function_exists('mail'),'version'=>3]);
 if ($action==='session' && $method==='GET') reply(['user'=>user(),'csrf'=>$_SESSION['csrf']]);
 if ($action==='register' && $method==='POST') {
   limitRate('register',8,3600);
@@ -59,11 +63,12 @@ if ($action==='register' && $method==='POST') {
   if(strlen($password)>72) fail('Usa una contraseña de hasta 72 bytes.');
   if(!filter_var($email,FILTER_VALIDATE_EMAIL)) fail('Escribe un correo válido.');
   if(($input['privacy']??false)!==true) fail('Confirma que leíste la información de privacidad.');
-  if(query('SELECT id FROM users WHERE email=?',[$email])->fetch()) fail('No se pudo registrar ese correo. Si ya tienes cuenta, inicia sesión o utiliza tu código de recuperación.',409);
+  if(query('SELECT id FROM users WHERE email=?',[$email])->fetch()) fail('No se pudo registrar ese correo. Si ya tienes cuenta, inicia sesión o recupera tu contraseña por correo.',409);
   $recovery=bin2hex(random_bytes(16));
   query('INSERT INTO users(name,email,password,recovery,created) VALUES(?,?,?,?,?)',[$name,$email,password_hash($password,PASSWORD_DEFAULT),password_hash($recovery,PASSWORD_DEFAULT),time()]);
   session_regenerate_id(true); $_SESSION['uid']=(int)$db->lastInsertId(); $_SESSION['auth']=hash('sha256',(string)query('SELECT password FROM users WHERE id=?',[$_SESSION['uid']])->fetchColumn()); $_SESSION['csrf']=bin2hex(random_bytes(32));
-  reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'recovery'=>$recovery],201);
+  $sent=sendAuthEmail(user(),'verify');
+  reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'email_sent'=>$sent,'message'=>$sent?'Cuenta creada. Revisa tu correo para confirmar tu dirección.':'Cuenta creada, pero no pudimos enviar el correo ahora. Reintenta el envío desde Mi cuenta.'],201);
 }
 if ($action==='login' && $method==='POST') {
   limitRate('login',20,900); $email=strtolower(strvalInput($input,'email',5,254)); $password=strvalInput($input,'password',1,72);
@@ -77,6 +82,7 @@ if ($action==='recover' && $method==='POST') {
   if(strlen($password)>72) fail('Usa una contraseña de hasta 72 bytes.');
   $u=query('SELECT * FROM users WHERE email=?',[$email])->fetch(); if(!$u || !password_verify($code,$u['recovery'])) fail('Correo o código de recuperación incorrectos.',401);
   $newCode=bin2hex(random_bytes(16)); query('UPDATE users SET password=?,recovery=? WHERE id=?',[password_hash($password,PASSWORD_DEFAULT),password_hash($newCode,PASSWORD_DEFAULT),$u['id']]);
+  query('UPDATE email_tokens SET used=? WHERE user_id=? AND used IS NULL',[time(),$u['id']]);
   // Revoke all active sessions for this account by rotating its credential fingerprint.
   session_regenerate_id(true); $_SESSION['uid']=(int)$u['id']; $_SESSION['auth']=hash('sha256',(string)query('SELECT password FROM users WHERE id=?',[$u['id']])->fetchColumn()); $_SESSION['csrf']=bin2hex(random_bytes(32)); reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'recovery'=>$newCode]);
 }
@@ -113,6 +119,7 @@ if(in_array($action,['create','update'],true) && $method==='POST') {
   if(($input['contact_consent']??'')!=='1') fail('Autoriza mostrar el contacto de este anuncio.');
   $beds=integerInput($input,'bedrooms',0,100);$baths=integerInput($input,'bathrooms',0,100);$area=integerInput($input,'area',0,10000000);
   $status=choice($input,'status',['active','paused']);
+  if($status==='active')requireVerified($u);
   $uploads=$_FILES['photos']??null; $count=0;
   if($uploads && is_array($uploads['error'])) foreach($uploads['error'] as $error) {if($error!==UPLOAD_ERR_NO_FILE)$count++;}
   if($count>8) fail('Sube como máximo 8 fotos.');
@@ -142,6 +149,6 @@ if(in_array($action,['create','update'],true) && $method==='POST') {
   } catch(Throwable $e) {if($db->inTransaction())$db->rollBack();foreach($prepared as $ph)@unlink($dataDir.'/photos/'.$ph['file']);if($e instanceof InvalidArgumentException)fail($e->getMessage());throw $e;}
   reply(['property'=>propertyData(selectProperty($id),true)],$action==='create'?201:200);
 }
-if($action==='status' && $method==='POST') {$u=requireUser();$id=strvalInput($input,'id',24,24);$status=choice($input,'status',['active','paused']);$p=selectProperty($id);if(!$p||(int)$p['user_id']!==(int)$u['id'])fail('Anuncio no disponible.',404);query('UPDATE properties SET status=?,updated=? WHERE id=?',[$status,time(),$id]);reply(['ok'=>true]);}
+if($action==='status' && $method==='POST') {$u=requireUser();$id=strvalInput($input,'id',24,24);$status=choice($input,'status',['active','paused']);$p=selectProperty($id);if(!$p||(int)$p['user_id']!==(int)$u['id'])fail('Anuncio no disponible.',404);if($status==='active')requireVerified($u);query('UPDATE properties SET status=?,updated=? WHERE id=?',[$status,time(),$id]);reply(['ok'=>true]);}
 if($action==='report' && $method==='POST') {$u=requireUser();limitRate('report',10,3600);$id=strvalInput($input,'id',24,24);$reason=strvalInput($input,'reason',10,1000);$p=selectProperty($id);if(!$p||$p['status']!=='active')fail('Anuncio no disponible.',404);query('INSERT INTO reports(property_id,user_id,reason,created) VALUES(?,?,?,?) ON CONFLICT(property_id,user_id) DO UPDATE SET reason=excluded.reason,created=excluded.created',[$id,$u['id'],$reason,time()]);reply(['ok'=>true]);}
 fail('Operación no disponible.',404);

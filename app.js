@@ -4,6 +4,10 @@ const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const money = n => new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',maximumFractionDigits:0}).format(n);
 let currentUser=null,csrf='',mode='Renta',authMode='login',afterAuth=null,recoveryCode='',sequence=0,previewURLs=[],shownMine=[];
 const auth=$('#auth-form'), publish=$('#publish-form');
+const incomingEmailLink = new URLSearchParams(location.hash.slice(1));
+let emailLinkToken=incomingEmailLink.get('verify')||incomingEmailLink.get('reset')||'';
+const emailLinkPurpose=incomingEmailLink.has('verify')?'verify':incomingEmailLink.has('reset')?'reset':'';
+if(emailLinkPurpose)history.replaceState(null,'',location.pathname+location.search);
 $('#year').textContent=new Date().getFullYear();
 function notify(message){$('#toast').textContent=message;$('#toast').hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$('#toast').hidden=true,6000);}
 function closeDialogs(){document.querySelectorAll('dialog[open]').forEach(d=>d.close());}
@@ -21,11 +25,33 @@ async function busy(form,fn,status){const buttons=[...form.querySelectorAll('but
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
 document.querySelectorAll('[data-privacy]').forEach(b=>b.addEventListener('click',()=>$('#privacy-dialog').showModal()));
 $('#privacy-open').addEventListener('click',()=>$('#privacy-dialog').showModal());
-function setAuthMode(next){authMode=next;auth.reset();$('#auth-status').textContent='';const register=next==='register',recover=next==='recover';$('#name-label').hidden=!register;auth.elements.name.required=register;$('#privacy-check').hidden=!register;auth.elements.privacy.required=register;$('#recovery-label').hidden=!recover;auth.elements.code.required=recover;$('#password-help').hidden=!(register||recover);auth.elements.password.minLength=register||recover?12:1;auth.elements.password.autocomplete=next==='login'?'current-password':'new-password';$('#password-label').textContent=recover?'Nueva contraseña':'Contraseña';$('#auth-submit').textContent=register?'Crear cuenta gratis ↗':recover?'Recuperar cuenta ↗':'Entrar ↗';document.querySelectorAll('.auth-tabs button').forEach(b=>b.classList.toggle('selected',b.dataset.auth===next));}
+function setAuthMode(next){
+ authMode=next;auth.reset();$('#auth-status').textContent='';
+ const register=next==='register',recover=next==='recover',forgot=next==='forgot',reset=next==='reset';
+ $('#name-label').hidden=!register;auth.elements.name.required=register;
+ $('#privacy-check').hidden=!register;auth.elements.privacy.required=register;
+ $('#recovery-label').hidden=!recover;auth.elements.code.required=recover;
+ $('#password-wrapper').hidden=forgot;auth.elements.password.required=!forgot;
+ auth.elements.email.required=!reset;auth.elements.email.closest('label').hidden=reset;
+ $('#password-help').hidden=!(register||recover||reset);auth.elements.password.minLength=register||recover||reset?12:1;
+ auth.elements.password.autocomplete=next==='login'?'current-password':'new-password';
+ $('#password-label').textContent=recover||reset?'Nueva contraseña':'Contraseña';
+ $('#auth-title').textContent=forgot?'Recupera tu acceso.':reset?'Elige una nueva contraseña.':'Tu próximo comienzo.';
+ $('#auth-submit').textContent=register?'Crear cuenta gratis ↗':recover?'Recuperar cuenta ↗':forgot?'Enviar enlace por correo ↗':reset?'Guardar contraseña ↗':'Entrar ↗';
+ document.querySelectorAll('.auth-tabs button').forEach(b=>b.classList.toggle('selected',b.dataset.auth===next));
+}
 document.querySelectorAll('[data-auth]').forEach(b=>b.addEventListener('click',()=>setAuthMode(b.dataset.auth)));
 async function needAuth(callback){try{await sessionReady;if(currentUser)return callback();afterAuth=callback;setAuthMode('login');openDialog('#auth-dialog');}catch(e){notify(e.message);}}
 $('#account-open').addEventListener('click',()=>needAuth(showAccount));
-auth.addEventListener('submit',e=>{e.preventDefault();busy(auth,async()=>{const values=Object.fromEntries(new FormData(auth));values.privacy=auth.elements.privacy.checked;const data=await api(authMode,values);currentUser=data.user;updateAccount();auth.reset();if(data.recovery){recoveryCode=data.recovery;$('#recovery-code').textContent=recoveryCode;openDialog('#recovery-dialog');}else{closeDialogs();const next=afterAuth;afterAuth=null;if(next)await next();else await showAccount();}},$('#auth-status'));});
+auth.addEventListener('submit',e=>{e.preventDefault();busy(auth,async()=>{
+ const values=Object.fromEntries(new FormData(auth));values.privacy=auth.elements.privacy.checked;
+ if(authMode==='forgot'){const data=await api('forgot-password',{email:values.email});$('#auth-status').textContent=data.message;return;}
+ if(authMode==='reset'){const data=await api('reset-password',{token:emailLinkToken,password:values.password});emailLinkToken='';currentUser=null;updateAccount();setAuthMode('login');$('#auth-status').textContent=data.message;return;}
+ const data=await api(authMode,values);currentUser=data.user;updateAccount();auth.reset();
+ if(authMode==='register'){showEmailPending(data.message);return;}
+ if(data.recovery){recoveryCode=data.recovery;$('#recovery-code').textContent=recoveryCode;openDialog('#recovery-dialog');return;}
+ closeDialogs();const next=afterAuth;afterAuth=null;if(next)await next();else await showAccount();
+},$('#auth-status'));});
 $('#recovery-download').addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([`Hogar Por Favor — código privado de recuperación\nCuenta: ${currentUser.email}\nCódigo: ${recoveryCode}\n\nGuárdalo de forma segura. No lo compartas. Permite cambiar tu contraseña.\n`],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='hogar-por-favor-recuperacion.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
 $('#recovery-continue').addEventListener('click',async()=>{recoveryCode='';$('#recovery-code').textContent='';closeDialogs();const next=afterAuth;afterAuth=null;if(next)await next();else await showAccount();});
 $('#logout').addEventListener('click',async()=>{try{await api('logout',{});currentUser=null;updateAccount();$('#my-properties').replaceChildren();closeDialogs();notify('Sesión cerrada.');}catch(e){$('#account-status').textContent=e.message;}});
@@ -36,14 +62,49 @@ function bindCards(container){container.querySelectorAll('[data-detail]').forEac
 async function loadProperties(page=1){const request=++sequence;$('#results').innerHTML='<p>Buscando propiedades…</p>';try{const data=await api('list',undefined,{operation:mode,type:$('#property').value,location:$('#location').value.trim(),budget:$('#budget').value,page});if(request!==sequence)return;$('#property-grid').innerHTML=data.properties.map(p=>propertyCard(p)).join('');bindCards($('#property-grid'));$('#results').innerHTML=data.total?`<p><strong>${data.total} ${data.total===1?'propiedad':'propiedades'}</strong> en ${mode.toLowerCase()} · Contacto directo</p>`:'<span class="empty-icon">⌂</span><div><h3>No encontramos propiedades con estos filtros.</h3><p>Prueba otra zona o presupuesto. Si tienes un espacio, puedes publicar el primer anuncio gratis.</p></div>';$('#pagination').replaceChildren();if(data.pages>1)for(const [label,next] of [['← Anterior',page-1],[`Página ${page} de ${data.pages}`,0],['Siguiente →',page+1]]){const b=document.createElement('button');b.textContent=label;b.disabled=next<1||next>data.pages;b.addEventListener('click',()=>loadProperties(next));$('#pagination').append(b);}}catch(e){if(request!==sequence)return;$('#property-grid').replaceChildren();$('#results').replaceChildren();const p=document.createElement('p');p.textContent=e.message;const b=document.createElement('button');b.className='plain';b.textContent='Reintentar';b.addEventListener('click',()=>loadProperties(page));$('#results').append(p,b);}}
 document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode==='renta'?'Renta':'Venta';document.querySelectorAll('[data-mode]').forEach(item=>{item.classList.toggle('selected',item===b);item.setAttribute('aria-pressed',String(item===b));});loadProperties();}));
 $('#search').addEventListener('submit',e=>{e.preventDefault();loadProperties();});
-async function showAccount(){openDialog('#account-dialog');$('#account-description').textContent=`Hola, ${currentUser.name}. Tus anuncios activos son públicos; los pausados solo los puedes ver tú.`;$('#account-status').textContent='Cargando tus anuncios…';try{const data=await api('mine');shownMine=data.properties;$('#my-properties').className='property-grid';$('#my-properties').innerHTML=data.properties.map(p=>propertyCard(p,true)).join('');bindCards($('#my-properties'));$('#account-status').textContent=data.properties.length?'':'Todavía no tienes anuncios. Publica tu primer espacio gratis.';}catch(e){$('#account-status').textContent=e.message;}}
+async function showAccount(){openDialog('#account-dialog');renderEmailAccountStatus();$('#account-description').textContent=`Hola, ${currentUser.name}. Tus anuncios activos son públicos; los pausados solo los puedes ver tú.`;$('#account-status').textContent='Cargando tus anuncios…';try{const data=await api('mine');shownMine=data.properties;$('#my-properties').className='property-grid';$('#my-properties').innerHTML=data.properties.map(p=>propertyCard(p,true)).join('');bindCards($('#my-properties'));$('#account-status').textContent=data.properties.length?'':'Todavía no tienes anuncios. Publica tu primer espacio gratis.';}catch(e){$('#account-status').textContent=e.message;}}
 function clearPreviews(){previewURLs.forEach(URL.revokeObjectURL);previewURLs=[];$('#photo-preview').replaceChildren();}
 function openPublish(p=null){publish.reset();clearPreviews();$('#publish-status').textContent='';$('#publish-title').textContent=p?'Edita tu propiedad.':'Publica tu propiedad.';$('#publish-submit').textContent=p?'Guardar cambios ↗':'Publicar gratis ↗';$('#photos-input').required=!p;$('#photo-help').textContent=p?'Opcional: selecciona de 1 a 8 fotos para reemplazar todas las actuales. Si no eliges fotos se conservan las existentes.':'De 1 a 8 fotos JPG, PNG o WebP. Máximo 6 MB por foto.';if(p){for(const name of ['id','title','operation','type','price','state','city','neighborhood','description','contact_type','contact','bedrooms','bathrooms','area','status'])publish.elements[name].value=p[name];publish.elements.contact_consent.checked=true;p.photos.forEach(id=>{const img=document.createElement('img');img.src=photoURL(id);img.alt='Foto actual';$('#photo-preview').append(img);});}$('#contact-type').dispatchEvent(new Event('change'));openDialog('#publish-dialog');}
-document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>needAuth(()=>openPublish())));
+document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>needAuth(()=>{if(!currentUser.email_verified){afterAuth=()=>openPublish();showEmailPending();}else openPublish();})));
 $('#photos-input').addEventListener('change',()=>{clearPreviews();const files=[...$('#photos-input').files];if(files.length>8||files.some(f=>f.size>6*1024*1024||!['image/jpeg','image/png','image/webp'].includes(f.type))){$('#publish-status').textContent='Elige hasta 8 fotos JPG, PNG o WebP, de máximo 6 MB cada una.';$('#photos-input').value='';return;}$('#publish-status').textContent='';files.forEach(file=>{const img=document.createElement('img');const url=URL.createObjectURL(file);previewURLs.push(url);img.src=url;img.alt=file.name;$('#photo-preview').append(img);});});
 $('#contact-type').addEventListener('change',()=>{const field=publish.elements.contact;const email=$('#contact-type').value==='Correo';field.type=email?'email':'tel';field.inputMode=email?'email':'tel';field.placeholder=email?'contacto@ejemplo.com':'Código de país + número';});
 publish.addEventListener('submit',e=>{e.preventDefault();busy(publish,async()=>{const data=new FormData(publish);await api(data.get('id')?'update':'create',data);clearPreviews();publish.reset();await loadProperties();await showAccount();notify('Anuncio guardado. Puedes editarlo o pausarlo desde aquí.');},$('#publish-status'));});
 async function showDetail(id){openDialog('#detail-dialog');$('#property-detail').textContent='Cargando propiedad…';try{const {property:p}=await api('detail',undefined,{id});const href=p.contact_type==='WhatsApp'?`https://wa.me/${encodeURIComponent(p.contact)}`:p.contact_type==='Teléfono'?`tel:+${p.contact}`:`mailto:${encodeURIComponent(p.contact)}`;$('#property-detail').innerHTML=`<div class="detail-gallery">${p.photos.map((ph,i)=>`<img src="${photoURL(ph)}" alt="Foto ${i+1} de ${esc(p.title)}" loading="lazy">`).join('')}</div><span class="eyebrow">${esc(p.type)} · ${esc(p.operation)}${p.status==='paused'?' · PAUSADO':''}</span><h2 id="detail-title">${esc(p.title)}</h2><p class="price">${money(p.price)} <small>MXN${p.operation==='Renta'?' / mes':''}</small></p><p>${esc(locationText(p))}</p><div class="property-specs">${p.bedrooms?`<span>${p.bedrooms} recámaras</span>`:''}${p.bathrooms?`<span>${p.bathrooms} baños</span>`:''}${p.area?`<span>${p.area} m²</span>`:''}</div><p class="description-text">${esc(p.description)}</p><div class="contact-box"><span>Publicado por ${esc(p.owner_name)}</span><a class="button full" href="${esc(href)}" ${p.contact_type==='WhatsApp'?'target="_blank" rel="noopener noreferrer"':''}>Contactar por ${esc(p.contact_type)} ↗</a><small>Contacto público: ${esc(p.contact)}</small></div><p class="safety-note">Anuncio e identidad sin verificar. Visita la propiedad y comprueba quién la ofrece antes de entregar dinero o documentos.</p><div class="detail-actions"><button class="plain" id="copy-link">Copiar enlace</button><button class="plain" id="report-open">Reportar publicación</button></div>`;$('#copy-link').addEventListener('click',async()=>{const url=new URL(location.origin+location.pathname);url.searchParams.set('prop',id);try{await navigator.clipboard.writeText(url.href);notify('Enlace copiado.');}catch{notify(`Enlace: ${url.href}`);}});$('#report-open').addEventListener('click',()=>needAuth(()=>{openDialog('#report-dialog');$('#report-form').reset();$('#report-form').elements.id.value=id;$('#report-status').textContent='';}));}catch(e){$('#property-detail').textContent=e.message;}}
 $('#report-form').addEventListener('submit',e=>{e.preventDefault();busy($('#report-form'),async()=>{await api('report',Object.fromEntries(new FormData($('#report-form'))));$('#report-status').textContent='Reporte recibido. Gracias por ayudarnos a identificar publicaciones sospechosas.';},$('#report-status'));});
 const sessionReady=api('session').then(data=>{currentUser=data.user;updateAccount();return data;});sessionReady.catch(()=>{$('#account-open').textContent='Entrar / Registrarme';});
-sessionReady.then(()=>{loadProperties();const id=new URLSearchParams(location.search).get('prop');if(id&&/^[a-f0-9]{24}$/.test(id))showDetail(id);}).catch(e=>{$('#results').textContent=e.message;});
+sessionReady.then(()=>{loadProperties();handleIncomingEmailLink();const id=new URLSearchParams(location.search).get('prop');if(id&&/^[a-f0-9]{24}$/.test(id))showDetail(id);}).catch(e=>{$('#results').textContent=e.message;});
+
+function showEmailPending(message=''){
+ $('#email-title').textContent='Confirma tu correo.';
+ $('#email-description').textContent=currentUser?'Enviaremos el enlace a '+currentUser.email+'. Revisa tu bandeja de entrada y spam. El enlace vence en 24 horas.':'Inicia sesión para solicitar un nuevo enlace de confirmación.';
+ $('#email-confirm').hidden=true;$('#email-check').hidden=!currentUser;$('#email-resend').hidden=!currentUser;
+ $('#email-status').textContent=message;openDialog('#email-dialog');
+}
+function renderEmailAccountStatus(){
+ const box=$('#email-account-status');box.replaceChildren();
+ const text=document.createElement('p');text.textContent=currentUser.email_verified?'✓ Correo confirmado':'Confirma tu correo para publicar anuncios visibles.';box.append(text);
+ if(!currentUser.email_verified){const b=document.createElement('button');b.className='plain';b.textContent='Confirmar mi correo';b.addEventListener('click',()=>showEmailPending());box.append(b);}
+}
+function handleIncomingEmailLink(){
+ if(!emailLinkPurpose)return;
+ if(!/^[a-f0-9]{64}$/.test(emailLinkToken)){notify('El enlace no es válido. Solicita uno nuevo desde tu cuenta.');return;}
+ if(emailLinkPurpose==='reset'){setAuthMode('reset');openDialog('#auth-dialog');return;}
+ $('#email-title').textContent='Confirma tu correo.';$('#email-description').textContent='Pulsa el botón para confirmar la dirección de correo a la que enviamos este enlace.';
+ $('#email-confirm').hidden=false;$('#email-check').hidden=true;$('#email-resend').hidden=true;$('#email-status').textContent='';openDialog('#email-dialog');
+}
+$('#email-confirm').addEventListener('click',async()=>{
+ const b=$('#email-confirm');b.disabled=true;$('#email-status').textContent='Confirmando…';
+ try{const data=await api('verify-email',{token:emailLinkToken});emailLinkToken='';currentUser=data.user;updateAccount();$('#email-status').textContent=data.message;b.hidden=true;
+ const next=document.createElement('button');next.className='button full';next.textContent=currentUser?'Ir a mi cuenta ↗':'Iniciar sesión ↗';next.addEventListener('click',()=>{next.remove();if(currentUser)showAccount();else{setAuthMode('login');openDialog('#auth-dialog');}});$('#email-status').after(next);
+ }catch(e){$('#email-status').textContent=e.message;if(currentUser){$('#email-resend').hidden=false;}}finally{b.disabled=false;}
+});
+$('#email-resend').addEventListener('click',async()=>{
+ const b=$('#email-resend');b.disabled=true;$('#email-status').textContent='Solicitando envío…';
+ try{const data=await api('resend-verification',{});$('#email-status').textContent=data.message;}catch(e){$('#email-status').textContent=e.message;}finally{b.disabled=false;}
+});
+$('#email-check').addEventListener('click',async()=>{
+ try{const data=await api('session');currentUser=data.user;updateAccount();
+ if(currentUser?.email_verified){const next=afterAuth;afterAuth=null;if(next)await next();else await showAccount();}
+ else $('#email-status').textContent='Aún no se ha confirmado el correo. Abre el enlace del mensaje y pulsa Confirmar correo.';
+ }catch(e){$('#email-status').textContent=e.message;}
+});
