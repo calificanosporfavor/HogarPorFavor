@@ -37,6 +37,7 @@ function sendAuthEmail(array $u,string $purpose): bool {
  $expires=$now+600;
  $subject=$verify?'Confirma tu correo — Hogar Por Favor':'Recupera tu contraseña — Hogar Por Favor';
  $text=$verify?"Tu código para confirmar tu correo es:\n\n$code\n\nEscríbelo en la pantalla Confirma tu correo de Hogar Por Favor.":"Tu código para recuperar tu contraseña es:\n\n$code\n\nEscríbelo en la pantalla de recuperación de Hogar Por Favor y elige una contraseña nueva. Si no solicitaste este cambio, ignora el mensaje: tu contraseña sigue igual.";
+ if($purpose==='email-change'){$subject='Confirma tu nuevo correo — Hogar Por Favor';$text="Tu código para cambiar el correo de tu cuenta es:\n\n$code\n\nEscríbelo en Mi cuenta, en Cambiar mi correo. Tu correo anterior seguirá siendo el de acceso hasta confirmar este código. Si no solicitaste este cambio, ignora el mensaje.";}
  $text="Hola,\n\n".$text."\n\nEl código vence en 10 minutos y solo se puede usar una vez.\nNo compartas este código. Nuestro equipo nunca te lo pedirá por teléfono, chat ni correo.\n\nHogar Por Favor\nhogarporfavor.com\n\nEste es un mensaje automático; no respondas a esta dirección.\n";
  query('DELETE FROM email_tokens WHERE expires<?',[$now-86400]);
  query('DELETE FROM email_codes WHERE expires<?',[$now-86400]);
