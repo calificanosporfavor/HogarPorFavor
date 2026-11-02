@@ -23,8 +23,8 @@ async function api(action,body,query={}){
 function updateAccount(){$('#account-open').textContent=currentUser?'Mi cuenta':'Entrar / Registrarme';}
 async function busy(form,fn,status){const buttons=[...form.querySelectorAll('button[type="submit"],button:not([type])')];buttons.forEach(b=>b.disabled=true);status.textContent='Un momento…';try{await fn();}catch(e){status.textContent=e.message;}finally{buttons.forEach(b=>b.disabled=false);}}
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
-document.querySelectorAll('[data-privacy]').forEach(b=>b.addEventListener('click',()=>$('#privacy-dialog').showModal()));
-$('#privacy-open').addEventListener('click',()=>$('#privacy-dialog').showModal());
+
+
 function setAuthMode(next){
  authMode=next;auth.reset();$('#auth-status').textContent='';
  const register=next==='register',recover=next==='recover',forgot=next==='forgot',reset=next==='reset',codeReset=next==='code-reset';
