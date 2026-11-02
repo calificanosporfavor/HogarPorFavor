@@ -69,9 +69,10 @@ function handleEmailAction(string $action,string $method,array $input): void {
    $now=time();query('UPDATE users SET email_verified_at=COALESCE(email_verified_at,?) WHERE id=?',[$now,$u['id']]);
    if($purpose==='reset'){query('UPDATE users SET password=?,recovery=? WHERE id=?',[$hash,password_hash(bin2hex(random_bytes(24)),PASSWORD_DEFAULT),$u['id']]);query('UPDATE email_tokens SET used=? WHERE user_id=? AND used IS NULL',[$now,$u['id']]);query('UPDATE email_codes SET used=? WHERE user_id=? AND used IS NULL',[$now,$u['id']]);}
    else{query('UPDATE email_codes SET used=? WHERE user_id=? AND purpose="verify" AND used IS NULL',[$now,$u['id']]);query('UPDATE email_tokens SET used=? WHERE user_id=? AND purpose="verify" AND used IS NULL',[$now,$u['id']]);}
+   if($purpose==='reset')queuePasswordNotice((int)$u['id']);
    $db->exec('COMMIT');
   }catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');throw $e;}
-  if($purpose==='reset'){$_SESSION=[];session_regenerate_id(true);$_SESSION['csrf']=bin2hex(random_bytes(32));reply(['message'=>'Tu contraseña cambió. Inicia sesión con la nueva contraseña.','csrf'=>$_SESSION['csrf']]);}
+  if($purpose==='reset'){flushSecurityNotices();$_SESSION=[];session_regenerate_id(true);$_SESSION['csrf']=bin2hex(random_bytes(32));reply(['message'=>'Tu contraseña cambió. Inicia sesión con la nueva contraseña.','csrf'=>$_SESSION['csrf']]);}
   reply(['message'=>'Correo confirmado. Ya puedes publicar tus propiedades.','user'=>user()]);
  }
  if($action==='resend-verification'){
@@ -99,8 +100,9 @@ function handleEmailAction(string $action,string $method,array $input): void {
   $now=time();
   if($purpose==='verify'){query('UPDATE users SET email_verified_at=COALESCE(email_verified_at,?) WHERE id=?',[$now,$row['user_id']]);query('UPDATE email_tokens SET used=? WHERE user_id=? AND purpose="verify" AND used IS NULL',[$now,$row['user_id']]);}
   else {query('UPDATE users SET password=?,email_verified_at=COALESCE(email_verified_at,?),recovery=? WHERE id=?',[$hash,$now,password_hash(bin2hex(random_bytes(24)),PASSWORD_DEFAULT),$row['user_id']]);query('UPDATE email_tokens SET used=? WHERE user_id=? AND used IS NULL',[$now,$row['user_id']]);query('UPDATE email_codes SET used=? WHERE user_id=? AND used IS NULL',[$now,$row['user_id']]);}
+  if($purpose==='reset')queuePasswordNotice((int)$row['user_id']);
   $db->exec('COMMIT');
  }catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');throw $e;}
- if($purpose==='reset'){$_SESSION=[];session_regenerate_id(true);$_SESSION['csrf']=bin2hex(random_bytes(32));reply(['message'=>'Tu contraseña cambió. Inicia sesión con la nueva contraseña.','csrf'=>$_SESSION['csrf']]);}
+ if($purpose==='reset'){flushSecurityNotices();$_SESSION=[];session_regenerate_id(true);$_SESSION['csrf']=bin2hex(random_bytes(32));reply(['message'=>'Tu contraseña cambió. Inicia sesión con la nueva contraseña.','csrf'=>$_SESSION['csrf']]);}
  reply(['message'=>'Correo confirmado. Ya puedes publicar tus propiedades.','user'=>user()]);
 }

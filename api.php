@@ -46,6 +46,8 @@ require __DIR__.'/terms.php';
 require __DIR__.'/account-delete.php';
 require __DIR__.'/account-profile.php';
 require __DIR__.'/account-email.php';
+require __DIR__.'/security-mail.php';
+flushSecurityNotices();
 function query(string $sql,array $params=[]): PDOStatement { global $db; $s=$db->prepare($sql); $s->execute($params); return $s; }
 function user(): ?array { if (!isset($_SESSION['uid'])) return null; $u=query('SELECT id,name,email,password,email_verified_at,status,revoked_at FROM users WHERE id=?',[(int)$_SESSION['uid']])->fetch(); if(!$u||$u['status']!=='active'||(float)($_SESSION['issued']??0)<(float)$u['revoked_at']||!hash_equals(hash('sha256',$u['password']),(string)($_SESSION['auth']??''))){unset($_SESSION['uid'],$_SESSION['auth']);return null;}$u['email_verified']=$u['email_verified_at']!==null;$u['role']=strtolower($u['email'])===HOGAR_SUPERADMIN&&$u['email_verified']?'superadmin':'user';unset($u['password'],$u['email_verified_at'],$u['status'],$u['revoked_at']);return $u; }
 function requireUser(): array { return user() ?? fail('Inicia sesión para continuar.',401); }
@@ -106,9 +108,11 @@ if ($action==='recover' && $method==='POST') {
   $u=query('SELECT * FROM users WHERE email=?',[$email])->fetch(); if(!$u || !password_verify($code,$u['recovery'])) fail('Correo o código de recuperación incorrectos.',401);
   if($u['status']!=='active')fail('Esta cuenta está suspendida. Contacta a la administración.',403);
   $_SESSION['issued']=microtime(true);
+  $db->beginTransaction();
   $newCode=bin2hex(random_bytes(16)); query('UPDATE users SET password=?,recovery=? WHERE id=?',[password_hash($password,PASSWORD_DEFAULT),password_hash($newCode,PASSWORD_DEFAULT),$u['id']]);
   query('UPDATE email_tokens SET used=? WHERE user_id=? AND used IS NULL',[time(),$u['id']]);
   query('UPDATE email_codes SET used=? WHERE user_id=? AND used IS NULL',[time(),$u['id']]);
+  queuePasswordNotice((int)$u['id']);$db->commit();flushSecurityNotices();
   // Revoke all active sessions for this account by rotating its credential fingerprint.
   session_regenerate_id(true); $_SESSION['uid']=(int)$u['id']; $_SESSION['auth']=hash('sha256',(string)query('SELECT password FROM users WHERE id=?',[$u['id']])->fetchColumn()); $_SESSION['csrf']=bin2hex(random_bytes(32)); reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'recovery'=>$newCode]);
 }

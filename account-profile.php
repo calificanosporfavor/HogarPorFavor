@@ -27,8 +27,10 @@ function handleAccountProfile(string $action,string $method,array $input): void 
   $q=query('UPDATE users SET password=?,recovery=?,revoked_at=? WHERE id=? AND password=? AND status="active" AND revoked_at<=?',[$hash,password_hash(bin2hex(random_bytes(24)),PASSWORD_DEFAULT),$now,$u['id'],$stored,(float)($_SESSION['issued']??0)]);
   if(!$q->rowCount()){$db->rollBack();fail('Tu sesión cambió. Inicia sesión de nuevo antes de continuar.',409);}
   query('DELETE FROM email_tokens WHERE user_id=?',[$u['id']]);query('DELETE FROM email_codes WHERE user_id=?',[$u['id']]);
+  queuePasswordNotice((int)$u['id']);
   $db->commit();
  }catch(Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
+ flushSecurityNotices();
  session_regenerate_id(true);$_SESSION['auth']=hash('sha256',$hash);$_SESSION['issued']=microtime(true);$_SESSION['csrf']=bin2hex(random_bytes(32));
  reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'message'=>'Tu contraseña se cambió. Las demás sesiones se cerraron y los códigos de recuperación anteriores dejaron de funcionar.']);
 }

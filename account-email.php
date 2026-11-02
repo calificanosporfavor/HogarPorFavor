@@ -39,8 +39,10 @@ function handleAccountEmail(string $action,string $method,array $input): void {
   if(query('SELECT 1 FROM users WHERE email=? AND id<>?',[$pending['email'],$u['id']])->fetchColumn()){$db->exec('ROLLBACK');fail('Ese correo ya no está disponible. Inicia el cambio con otra dirección.',409);}
   $now=microtime(true);query('UPDATE users SET email=?,email_verified_at=?,revoked_at=?,recovery=? WHERE id=?',[$pending['email'],time(),$now,password_hash(bin2hex(random_bytes(24)),PASSWORD_DEFAULT),$u['id']]);
   query('DELETE FROM pending_email_changes WHERE user_id=?',[$u['id']]);query('DELETE FROM email_codes WHERE user_id=?',[$u['id']]);query('DELETE FROM email_tokens WHERE user_id=?',[$u['id']]);
+  $event=bin2hex(random_bytes(16));queueSecurityNotice((int)$u['id'],'email-old',$pending['old_email'],$event);queueSecurityNotice((int)$u['id'],'email-new',$pending['email'],$event);
   $db->exec('COMMIT');
  }catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');throw $e;}
+ flushSecurityNotices();
  session_regenerate_id(true);$_SESSION['issued']=microtime(true);$_SESSION['csrf']=bin2hex(random_bytes(32));
  reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'message'=>'Tu nuevo correo quedó confirmado y guardado. Úsalo para entrar y recuperar tu contraseña. Las demás sesiones se cerraron.']);
 }
