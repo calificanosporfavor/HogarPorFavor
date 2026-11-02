@@ -59,6 +59,11 @@ if ($method==='POST') {
   $contentType=$_SERVER['CONTENT_TYPE']??'';
   if (str_starts_with($contentType,'application/json')) { $raw=file_get_contents('php://input',false,null,0,16385); if(strlen($raw)>16384) fail('La solicitud es demasiado grande.',413); $input=json_decode($raw,true); if(!is_array($input)) fail('Solicitud inválida.'); } else $input=$_POST;
 } elseif ($method!=='GET') fail('Método no permitido.',405);
+if(defined('HOGAR_ADMIN_PAGE')) {
+ header('Content-Type: text/html; charset=utf-8'); header('X-Robots-Tag: noindex, nofollow, noarchive');
+ if($method!=='GET'||!isSuperadmin()){http_response_code(404);echo '<!doctype html><html lang="es"><meta charset="utf-8"><title>No encontrado</title><h1>Página no encontrada.</h1></html>';exit;}
+ require __DIR__.'/admin-view.php';exit;
+}
 handleEmailAction($action,$method,$input??[]);
 handleAdminAction($action,$method,$input??[]);
 if ($action==='health' && $method==='GET') reply(['ready'=>true,'images'=>function_exists('imagecreatefromstring'),'email'=>function_exists('mail'),'version'=>5]);

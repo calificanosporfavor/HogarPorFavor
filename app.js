@@ -20,7 +20,7 @@ async function api(action,body,query={}){
  let data;try{data=await response.json();}catch{throw Error('El servidor no pudo responder. Intenta de nuevo en unos minutos.');}
  if(!response.ok){if(response.status===401&&!['login','recover'].includes(action)){currentUser=null;updateAccount();}throw Error(data.error||'No pudimos completar la operación.');}if(data.csrf)csrf=data.csrf;return data;
 }
-function updateAccount(){$('#account-open').textContent=currentUser?'Mi cuenta':'Entrar / Registrarme';let link=$('#admin-nav-link');if(currentUser?.role==='superadmin'){if(!link){link=document.createElement('a');link.id='admin-nav-link';link.href='admin.html';link.className='plain';link.textContent='Administración';$('#account-open').before(link);}}else if(link)link.remove();}
+function updateAccount(){$('#account-open').textContent=currentUser?'Mi cuenta':'Entrar / Registrarme';}
 async function busy(form,fn,status){const buttons=[...form.querySelectorAll('button[type="submit"],button:not([type])')];buttons.forEach(b=>b.disabled=true);status.textContent='Un momento…';try{await fn();}catch(e){status.textContent=e.message;}finally{buttons.forEach(b=>b.disabled=false);}}
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
 document.querySelectorAll('[data-privacy]').forEach(b=>b.addEventListener('click',()=>$('#privacy-dialog').showModal()));
@@ -82,7 +82,7 @@ function showEmailPending(message=''){
  $('#email-status').textContent=message;openDialog('#email-dialog');
 }
 function renderEmailAccountStatus(){
- const box=$('#email-account-status');box.replaceChildren();if(currentUser.role==='superadmin'){const a=document.createElement('a');a.href='admin.html';a.className='text-link';a.textContent='Abrir panel de administración ↗';box.append(a);}
+ const box=$('#email-account-status');box.replaceChildren();
  const text=document.createElement('p');text.textContent=currentUser.email_verified?'✓ Correo confirmado':'Confirma tu correo para publicar anuncios visibles.';box.append(text);
  if(!currentUser.email_verified){const b=document.createElement('button');b.className='plain';b.textContent='Confirmar mi correo';b.addEventListener('click',()=>showEmailPending());box.append(b);}
 }
