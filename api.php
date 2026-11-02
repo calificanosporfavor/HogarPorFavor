@@ -48,6 +48,7 @@ require __DIR__.'/account-profile.php';
 require __DIR__.'/account-email.php';
 require __DIR__.'/security-mail.php';
 require __DIR__.'/account-sessions.php';
+require __DIR__.'/login-devices.php';
 flushSecurityNotices();
 function query(string $sql,array $params=[]): PDOStatement { global $db; $s=$db->prepare($sql); $s->execute($params); return $s; }
 function user(): ?array { if (!isset($_SESSION['uid'])) return null; $u=query('SELECT id,name,email,password,email_verified_at,status,revoked_at FROM users WHERE id=?',[(int)$_SESSION['uid']])->fetch(); if(currentSessionRevoked()||!$u||$u['status']!=='active'||(float)($_SESSION['issued']??0)<(float)$u['revoked_at']||!hash_equals(hash('sha256',$u['password']),(string)($_SESSION['auth']??''))){unset($_SESSION['uid'],$_SESSION['auth']);return null;}$u['email_verified']=$u['email_verified_at']!==null;trackAccountSession($u);$u['role']=strtolower($u['email'])===HOGAR_SUPERADMIN&&$u['email_verified']?'superadmin':'user';unset($u['password'],$u['email_verified_at'],$u['status'],$u['revoked_at']);return $u; }
@@ -93,6 +94,7 @@ if ($action==='register' && $method==='POST') {
   $newUserId=(int)$db->lastInsertId(); recordTerms($newUserId,'register'); $db->commit();
   rotateSession(); $_SESSION['uid']=$newUserId; $_SESSION['auth']=hash('sha256',(string)query('SELECT password FROM users WHERE id=?',[$_SESSION['uid']])->fetchColumn()); $_SESSION['csrf']=bin2hex(random_bytes(32));
   $_SESSION['issued']=microtime(true);
+  rememberLoginDevice(['id'=>$newUserId,'email'=>$email],false);
   $sent=sendAuthEmail(user(),'verify');
   reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'email_sent'=>$sent,'message'=>$sent?'Cuenta creada. Revisa tu correo para confirmar tu dirección.':'Cuenta creada, pero no pudimos enviar el correo ahora. Reintenta el envío desde Mi cuenta.'],201);
 }
@@ -103,7 +105,7 @@ if ($action==='login' && $method==='POST') {
   if(!password_verify($password,$u['password']??$dummy)||!$u) fail('Correo o contraseña incorrectos.',401);
   if($u['status']!=='active')fail('Esta cuenta está suspendida. Contacta a la administración.',403);
   $_SESSION['issued']=microtime(true);
-  rotateSession(); $_SESSION['uid']=(int)$u['id']; $_SESSION['auth']=hash('sha256',$u['password']); $_SESSION['csrf']=bin2hex(random_bytes(32)); reply(['user'=>user(),'csrf'=>$_SESSION['csrf']]);
+  rotateSession(); $_SESSION['uid']=(int)$u['id']; $_SESSION['auth']=hash('sha256',$u['password']); $_SESSION['csrf']=bin2hex(random_bytes(32)); rememberLoginDevice($u,true); reply(['user'=>user(),'csrf'=>$_SESSION['csrf']]);
 }
 if ($action==='recover' && $method==='POST') {
   limitRate('recover',8,3600); $email=strtolower(strvalInput($input,'email',5,254)); $code=strvalInput($input,'code',32,32); $password=strvalInput($input,'password',12,72);

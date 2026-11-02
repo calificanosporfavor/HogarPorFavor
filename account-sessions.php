@@ -3,6 +3,7 @@ declare(strict_types=1);
 if(!defined('HOGAR_INTERNAL')){http_response_code(404);exit;}
 $db->exec('CREATE TABLE IF NOT EXISTS account_sessions(digest TEXT PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,auth TEXT NOT NULL,issued REAL NOT NULL,started INTEGER,last_seen INTEGER NOT NULL,device TEXT NOT NULL);CREATE INDEX IF NOT EXISTS account_sessions_owner ON account_sessions(user_id,last_seen)');
 if(!in_array('revoked',array_column(query('PRAGMA table_info(account_sessions)')->fetchAll(),'name'),true))$db->exec('ALTER TABLE account_sessions ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0');
+if(!in_array('device_key',array_column(query('PRAGMA table_info(account_sessions)')->fetchAll(),'name'),true))$db->exec('ALTER TABLE account_sessions ADD COLUMN device_key TEXT');
 query('DELETE FROM account_sessions WHERE last_seen<?',[time()-86400]);
 function currentSessionRevoked(): bool {return (bool)query('SELECT revoked FROM account_sessions WHERE digest=?',[hash('sha256',session_id())])->fetchColumn();}
 function sessionControlId(string $digest): string {return hash_hmac('sha256',$digest,$_SESSION['csrf']);}
@@ -15,7 +16,7 @@ function sessionDevice(): string {
  return $browser.' · '.$os;
 }
 function trackAccountSession(array $u): void {
- query('INSERT INTO account_sessions(digest,user_id,auth,issued,started,last_seen,device) VALUES(?,?,?,?,?,?,?) ON CONFLICT(digest) DO UPDATE SET last_seen=excluded.last_seen,device=excluded.device', [hash('sha256',session_id()),$u['id'],$_SESSION['auth'],(float)($_SESSION['issued']??0),isset($_SESSION['issued'])?(int)$_SESSION['issued']:null,time(),sessionDevice()]);
+ query('INSERT INTO account_sessions(digest,user_id,auth,issued,started,last_seen,device,device_key) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(digest) DO UPDATE SET last_seen=excluded.last_seen,device=excluded.device,device_key=excluded.device_key', [hash('sha256',session_id()),$u['id'],$_SESSION['auth'],(float)($_SESSION['issued']??0),isset($_SESSION['issued'])?(int)$_SESSION['issued']:null,time(),sessionDevice(),$_SESSION['device_key']??null]);
 }
 function importExistingSessions(array $u): void {
  global $dataDir;
@@ -48,6 +49,7 @@ function handleAccountSessions(string $action,string $method,array $input): void
   $target=null;foreach(query('SELECT digest FROM account_sessions WHERE user_id=? AND auth=? AND revoked=0',[$u['id'],$_SESSION['auth']])->fetchAll() as $row){if(hash_equals(sessionControlId($row['digest']),$id)){$target=$row['digest'];break;}}
   if($target===null)fail('Esta sesión ya no está disponible. Actualiza la lista.',404);
   // Retain the marker so a cookie or legacy-file import cannot restore access.
+  query('DELETE FROM login_devices WHERE user_id=? AND device_key IN (SELECT device_key FROM account_sessions WHERE digest=?)',[$u['id'],$target]);
   query('UPDATE account_sessions SET revoked=1 WHERE digest=? AND user_id=?',[$target,$u['id']]);
   $current=hash_equals(hash('sha256',session_id()),$target);
   if($current){$_SESSION=[];session_regenerate_id(true);$_SESSION['csrf']=bin2hex(random_bytes(32));reply(['closed_current'=>true,'csrf'=>$_SESSION['csrf'],'message'=>'Cerraste esta sesión. Las demás siguen abiertas.']);}
@@ -62,7 +64,7 @@ function handleAccountSessions(string $action,string $method,array $input): void
  try{
   $q=query('UPDATE users SET revoked_at=? WHERE id=? AND password=? AND status="active" AND revoked_at<=?',[microtime(true),$u['id'],$stored,(float)($_SESSION['issued']??0)]);
   if(!$q->rowCount()){$db->rollBack();fail('Tu sesión cambió. Inicia sesión nuevamente.',409);}
-  query('DELETE FROM account_sessions WHERE user_id=?',[$u['id']]);query('DELETE FROM pending_email_changes WHERE user_id=?',[$u['id']]);query('DELETE FROM email_codes WHERE user_id=? AND purpose="email-change"',[$u['id']]);$db->commit();
+  query('DELETE FROM login_devices WHERE user_id=?',[$u['id']]);query('DELETE FROM account_sessions WHERE user_id=?',[$u['id']]);query('DELETE FROM pending_email_changes WHERE user_id=?',[$u['id']]);query('DELETE FROM email_codes WHERE user_id=? AND purpose="email-change"',[$u['id']]);$db->commit();
  }catch(Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
  $_SESSION=[];rotateSession();$_SESSION['csrf']=bin2hex(random_bytes(32));reply(['csrf'=>$_SESSION['csrf'],'message'=>'Cerraste sesión en todos los dispositivos, incluido este. Inicia sesión para volver a entrar.']);
 }
