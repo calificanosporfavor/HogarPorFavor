@@ -51,3 +51,7 @@ privacidad.html documenta datos, finalidades, contacto público, alojamiento, Go
 ## Eliminación desde Mi cuenta
 
 account-delete.php implementa delete-account: exige sesión, CSRF, contraseña actual, confirmación ELIMINAR y casilla explícita. Borra en transacción la cuenta, anuncios/fotos por cascada, reportes, códigos/tokens, constancias y acciones de moderación vinculadas. Las fotos se apartan de su ruta pública antes de confirmar la transacción; un fallo restaura los archivos. El borrado físico se reintenta en peticiones posteriores si falla; archivos aún referenciados por una transacción no se borran y una operación interrumpida se recupera tras 10 minutos. Invalida y elimina las sesiones identificables de la cuenta. SQLite utiliza borrado seguro y se intenta truncar su registro WAL. No elimina copias históricas del alojamiento o conversaciones externas. No probar borrados con cuentas reales del usuario.
+
+## Edición de perfil
+
+account-profile.php permite update-name y change-password con sesión, CSRF, contraseña actual y límite de intentos. Solo modifica la cuenta autenticada: no admite cambiar correo, rol o titular. El nombre actualiza las fichas de anuncios mediante la relación con users. Cambiar contraseña exige confirmación, mínimo 12 caracteres, máximo 72 bytes y una clave distinta; rota sesión y CSRF, conserva el acceso actual y revoca otros accesos, códigos de correo y recuperación de respaldo anteriores. La recuperación por correo sigue disponible. Probar con cuentas sintéticas locales, sin modificar credenciales de usuarios reales.
