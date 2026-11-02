@@ -37,7 +37,7 @@ function handleCommunity(string $action,string $method,array $input): void {
  if($action==='community-read'&&$method==='POST'){
   $t=socialThread(strvalInput($input,'thread',24,24),$u);$upTo=integerInput($input,'up_to',1,PHP_INT_MAX);
   if(!query('SELECT 1 FROM community_messages WHERE id=? AND thread_id=?',[$upTo,$t['id']])->fetchColumn())fail('Mensaje no disponible.',404);
-  query('INSERT INTO community_reads(user_id,thread_id,last_read_id) VALUES(?,?,?) ON CONFLICT(user_id,thread_id) DO UPDATE SET last_read_id=MAX(last_read_id,excluded.last_read_id)',[$uid,$t['id'],$upTo]);reply(socialUnread($uid));
+  query('INSERT INTO community_reads(user_id,thread_id,last_read_id) VALUES(?,?,?) ON CONFLICT(user_id,thread_id) DO UPDATE SET last_read_id=MAX(last_read_id,excluded.last_read_id)',[$uid,$t['id'],$upTo]);queueCommunityMail($uid);reply(socialUnread($uid));
  }
  if(str_starts_with($action,'admin-community')){
   if(!isSuperadmin($u))fail('Acceso reservado al superadmin.',403);
@@ -71,7 +71,7 @@ function handleCommunity(string $action,string $method,array $input): void {
   if($target===$uid)fail('Elige otro perfil.');
   if($action==='community-send'){
    limitRate('community-message-minute-'.$uid,15,60);limitRate('community-message-day-'.$uid,250,86400);$body=strvalInput($input,'body',1,2000);if(socialBlocked($uid,$target)||query('SELECT status FROM users WHERE id=?',[$target])->fetchColumn()!=='active')fail('Esta conversación no admite mensajes.',403);
-   query('INSERT INTO community_messages(thread_id,sender,body,created) VALUES(?,?,?,?)',[$thread['id'],$uid,$body,time()]);reply(['ok'=>true],201);
+   global $db;$db->beginTransaction();try{query('INSERT INTO community_messages(thread_id,sender,body,created) VALUES(?,?,?,?)',[$thread['id'],$uid,$body,time()]);queueCommunityMail($target);$db->commit();}catch(Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}reply(['ok'=>true],201);
   }
   if($action==='community-block'){if(($input['confirm']??false)!==true)fail('Confirma el cambio de bloqueo.');if(($input['block']??true)===false)query('DELETE FROM community_blocks WHERE user_id=? AND target=?',[$uid,$target]);else query('INSERT OR IGNORE INTO community_blocks(user_id,target,created) VALUES(?,?,?)',[$uid,$target,time()]);reply(['ok'=>true]);}
   limitRate('community-report-'.$uid,10,3600);$reason=strvalInput($input,'reason',10,1000);if($thread&&($input['share_messages']??false)!==true)fail('Autoriza compartir el contexto de esta conversación para revisar el reporte.');$context=$thread?query('SELECT m.body,m.created,u.name AS sender_name FROM community_messages m JOIN users u ON u.id=m.sender WHERE thread_id=? ORDER BY m.id DESC LIMIT 20',[$thread['id']])->fetchAll():[];query('INSERT INTO community_reports(reporter,target,reason,thread_id,created,context) VALUES(?,?,?,?,?,?)',[$uid,$target,$reason,$thread['id']??null,time(),json_encode($context,JSON_UNESCAPED_UNICODE)]);reply(['ok'=>true]);

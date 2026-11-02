@@ -52,6 +52,7 @@ require __DIR__.'/login-devices.php';
 require __DIR__.'/hero.php';
 require __DIR__.'/roomies.php';
 require __DIR__.'/community.php';
+require __DIR__.'/message-mail.php';
 flushSecurityNotices();
 function query(string $sql,array $params=[]): PDOStatement { global $db; $s=$db->prepare($sql); $s->execute($params); return $s; }
 function user(): ?array { if (!isset($_SESSION['uid'])) return null; $u=query('SELECT id,name,email,password,email_verified_at,status,revoked_at FROM users WHERE id=?',[(int)$_SESSION['uid']])->fetch(); if(currentSessionRevoked()||!$u||$u['status']!=='active'||(float)($_SESSION['issued']??0)<(float)$u['revoked_at']||!hash_equals(hash('sha256',$u['password']),(string)($_SESSION['auth']??''))){unset($_SESSION['uid'],$_SESSION['auth']);return null;}$u['email_verified']=$u['email_verified_at']!==null;trackAccountSession($u);$u['role']=strtolower($u['email'])===HOGAR_SUPERADMIN&&$u['email_verified']?'superadmin':'user';unset($u['password'],$u['email_verified_at'],$u['status'],$u['revoked_at']);return $u; }
@@ -76,6 +77,7 @@ if(defined('HOGAR_ADMIN_PAGE')) {
  if($method!=='GET'||!isSuperadmin()){http_response_code(404);echo '<!doctype html><html lang="es"><meta charset="utf-8"><title>No encontrado</title><h1>Página no encontrada.</h1></html>';exit;}
  require __DIR__.'/admin-view.php';exit;
 }
+handleCommunityMail($action,$method,$input??[]);
 handleCommunity($action,$method,$input??[]);
 handleRoomies($action,$method,$input??[]);
 handleHero($action,$method,$input??[]);
