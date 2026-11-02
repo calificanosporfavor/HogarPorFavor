@@ -50,6 +50,8 @@ require __DIR__.'/security-mail.php';
 require __DIR__.'/account-sessions.php';
 require __DIR__.'/login-devices.php';
 require __DIR__.'/hero.php';
+require __DIR__.'/roomies.php';
+require __DIR__.'/community.php';
 flushSecurityNotices();
 function query(string $sql,array $params=[]): PDOStatement { global $db; $s=$db->prepare($sql); $s->execute($params); return $s; }
 function user(): ?array { if (!isset($_SESSION['uid'])) return null; $u=query('SELECT id,name,email,password,email_verified_at,status,revoked_at FROM users WHERE id=?',[(int)$_SESSION['uid']])->fetch(); if(currentSessionRevoked()||!$u||$u['status']!=='active'||(float)($_SESSION['issued']??0)<(float)$u['revoked_at']||!hash_equals(hash('sha256',$u['password']),(string)($_SESSION['auth']??''))){unset($_SESSION['uid'],$_SESSION['auth']);return null;}$u['email_verified']=$u['email_verified_at']!==null;trackAccountSession($u);$u['role']=strtolower($u['email'])===HOGAR_SUPERADMIN&&$u['email_verified']?'superadmin':'user';unset($u['password'],$u['email_verified_at'],$u['status'],$u['revoked_at']);return $u; }
@@ -58,7 +60,7 @@ function strvalInput(array $input,string $name,int $min,int $max): string { $v=$
 function integerInput(array $input,string $name,int $min,int $max): int { $v=filter_var($input[$name]??null,FILTER_VALIDATE_INT); if($v===false||$v<$min||$v>$max) fail('Revisa el campo '.$name.'.'); return $v; }
 function choice(array $input,string $name,array $values): string { $v=strvalInput($input,$name,1,30); if(!in_array($v,$values,true)) fail('Selecciona una opción válida.'); return $v; }
 function limitRate(string $scope,int $maximum,int $window): void { $identity=$_SERVER['REMOTE_ADDR']??'local'; $key=hash('sha256',$scope.'|'.$identity); $now=time(); query('DELETE FROM limits WHERE expires<?',[$now]); query('INSERT INTO limits(key,count,expires) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1',[$key,$now+$window]); $row=query('SELECT count FROM limits WHERE key=?',[$key])->fetch(); if((int)$row['count']>$maximum) { header('Retry-After: '.$window); fail('Demasiados intentos. Espera unos minutos antes de intentar otra vez.',429); } }
-function propertyData(array $p,bool $owner=false): array { $p['price']=(int)$p['price']; $p['bedrooms']=(int)$p['bedrooms']; $p['bathrooms']=(int)$p['bathrooms']; $p['area']=(int)$p['area']; $p['photos']=query('SELECT id FROM photos WHERE property_id=? ORDER BY position',[$p['id']])->fetchAll(PDO::FETCH_COLUMN); unset($p['user_id']); if(!$owner) unset($p['email']); return $p; }
+function propertyData(array $p,bool $owner=false): array { $p['price']=(int)$p['price']; $p['bedrooms']=(int)$p['bedrooms']; $p['bathrooms']=(int)$p['bathrooms']; $p['area']=(int)$p['area']; $p['photos']=query('SELECT id FROM photos WHERE property_id=? ORDER BY position',[$p['id']])->fetchAll(PDO::FETCH_COLUMN); $p['profile_id']=query('SELECT p.id FROM community_profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=? AND p.visible=1 AND u.status="active" AND u.email_verified_at IS NOT NULL',[$p['user_id']??0])->fetchColumn()?:null; unset($p['user_id']); if(!$owner) unset($p['email']); return $p; }
 function selectProperty(string $id): ?array { return query('SELECT p.*,u.name AS owner_name,u.status AS owner_status FROM properties p JOIN users u ON u.id=p.user_id WHERE p.id=?',[$id])->fetch() ?: null; }
 if(isset($_SESSION['uid']))user();
 if ($method==='POST') {
@@ -74,6 +76,8 @@ if(defined('HOGAR_ADMIN_PAGE')) {
  if($method!=='GET'||!isSuperadmin()){http_response_code(404);echo '<!doctype html><html lang="es"><meta charset="utf-8"><title>No encontrado</title><h1>Página no encontrada.</h1></html>';exit;}
  require __DIR__.'/admin-view.php';exit;
 }
+handleCommunity($action,$method,$input??[]);
+handleRoomies($action,$method,$input??[]);
 handleHero($action,$method,$input??[]);
 handleAccountSessions($action,$method,$input??[]);
 handleAccountEmail($action,$method,$input??[]);

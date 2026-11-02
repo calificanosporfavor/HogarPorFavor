@@ -29,6 +29,8 @@ function handleAccountDeletion(string $action,string $method,array $input): void
   foreach($photos as $file){if(!preg_match('/^[a-f0-9]{32}\.jpg$/D',$file))throw new RuntimeException('Invalid stored photo name');$from=$dataDir.'/photos/'.$file;if(!is_file($from))continue;if(!rename($from,$stage.'/'.$file))throw new RuntimeException('Cannot stage photo deletion');$staged[]=$file;}
   query('DELETE FROM admin_audit WHERE actor_id=? OR (action LIKE "user_%" AND target=?) OR (action LIKE "property_%" AND target IN (SELECT id FROM properties WHERE user_id=?)) OR (action LIKE "report_%" AND target IN (SELECT CAST(id AS TEXT) FROM reports WHERE user_id=? OR property_id IN (SELECT id FROM properties WHERE user_id=?)))',[$u['id'],(string)$u['id'],$u['id'],$u['id'],$u['id']]);
   foreach(['verify-hour','verify-minute','reset-hour','reset-minute'] as $scope)query('DELETE FROM limits WHERE key=?',[hash('sha256','mail-recipient|'.$scope.'|'.strtolower($u['email']))]);
+  query('DELETE FROM admin_audit WHERE action LIKE "roomie_%" AND target IN (SELECT id FROM roomie_posts WHERE user_id=?)',[$u['id']]);
+  query('DELETE FROM admin_audit WHERE action="community_report_resolved" AND target IN (SELECT CAST(id AS TEXT) FROM community_reports WHERE reporter=? OR target=?)',[$u['id'],$u['id']]);
   query('DELETE FROM terms_acceptances WHERE user_id=?',[$u['id']]);
   query('DELETE FROM users WHERE id=?',[$u['id']]);
   $db->exec('COMMIT');
