@@ -47,9 +47,10 @@ require __DIR__.'/account-delete.php';
 require __DIR__.'/account-profile.php';
 require __DIR__.'/account-email.php';
 require __DIR__.'/security-mail.php';
+require __DIR__.'/account-sessions.php';
 flushSecurityNotices();
 function query(string $sql,array $params=[]): PDOStatement { global $db; $s=$db->prepare($sql); $s->execute($params); return $s; }
-function user(): ?array { if (!isset($_SESSION['uid'])) return null; $u=query('SELECT id,name,email,password,email_verified_at,status,revoked_at FROM users WHERE id=?',[(int)$_SESSION['uid']])->fetch(); if(!$u||$u['status']!=='active'||(float)($_SESSION['issued']??0)<(float)$u['revoked_at']||!hash_equals(hash('sha256',$u['password']),(string)($_SESSION['auth']??''))){unset($_SESSION['uid'],$_SESSION['auth']);return null;}$u['email_verified']=$u['email_verified_at']!==null;$u['role']=strtolower($u['email'])===HOGAR_SUPERADMIN&&$u['email_verified']?'superadmin':'user';unset($u['password'],$u['email_verified_at'],$u['status'],$u['revoked_at']);return $u; }
+function user(): ?array { if (!isset($_SESSION['uid'])) return null; $u=query('SELECT id,name,email,password,email_verified_at,status,revoked_at FROM users WHERE id=?',[(int)$_SESSION['uid']])->fetch(); if(!$u||$u['status']!=='active'||(float)($_SESSION['issued']??0)<(float)$u['revoked_at']||!hash_equals(hash('sha256',$u['password']),(string)($_SESSION['auth']??''))){unset($_SESSION['uid'],$_SESSION['auth']);return null;}$u['email_verified']=$u['email_verified_at']!==null;trackAccountSession($u);$u['role']=strtolower($u['email'])===HOGAR_SUPERADMIN&&$u['email_verified']?'superadmin':'user';unset($u['password'],$u['email_verified_at'],$u['status'],$u['revoked_at']);return $u; }
 function requireUser(): array { return user() ?? fail('Inicia sesión para continuar.',401); }
 function strvalInput(array $input,string $name,int $min,int $max): string { $v=$input[$name]??''; if (!is_string($v)) fail('Revisa el campo '.$name.'.'); $v=trim($v); if(mb_strlen($v)<$min||mb_strlen($v)>$max) fail('Revisa el campo '.$name.'.'); return $v; }
 function integerInput(array $input,string $name,int $min,int $max): int { $v=filter_var($input[$name]??null,FILTER_VALIDATE_INT); if($v===false||$v<$min||$v>$max) fail('Revisa el campo '.$name.'.'); return $v; }
@@ -57,6 +58,7 @@ function choice(array $input,string $name,array $values): string { $v=strvalInpu
 function limitRate(string $scope,int $maximum,int $window): void { $identity=$_SERVER['REMOTE_ADDR']??'local'; $key=hash('sha256',$scope.'|'.$identity); $now=time(); query('DELETE FROM limits WHERE expires<?',[$now]); query('INSERT INTO limits(key,count,expires) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1',[$key,$now+$window]); $row=query('SELECT count FROM limits WHERE key=?',[$key])->fetch(); if((int)$row['count']>$maximum) { header('Retry-After: '.$window); fail('Demasiados intentos. Espera unos minutos antes de intentar otra vez.',429); } }
 function propertyData(array $p,bool $owner=false): array { $p['price']=(int)$p['price']; $p['bedrooms']=(int)$p['bedrooms']; $p['bathrooms']=(int)$p['bathrooms']; $p['area']=(int)$p['area']; $p['photos']=query('SELECT id FROM photos WHERE property_id=? ORDER BY position',[$p['id']])->fetchAll(PDO::FETCH_COLUMN); unset($p['user_id']); if(!$owner) unset($p['email']); return $p; }
 function selectProperty(string $id): ?array { return query('SELECT p.*,u.name AS owner_name,u.status AS owner_status FROM properties p JOIN users u ON u.id=p.user_id WHERE p.id=?',[$id])->fetch() ?: null; }
+if(isset($_SESSION['uid']))user();
 if ($method==='POST') {
   $origin=$_SERVER['HTTP_ORIGIN']??'';
   $expected=($local?'http://':'https://').($_SERVER['HTTP_HOST']??'');
@@ -70,6 +72,7 @@ if(defined('HOGAR_ADMIN_PAGE')) {
  if($method!=='GET'||!isSuperadmin()){http_response_code(404);echo '<!doctype html><html lang="es"><meta charset="utf-8"><title>No encontrado</title><h1>Página no encontrada.</h1></html>';exit;}
  require __DIR__.'/admin-view.php';exit;
 }
+handleAccountSessions($action,$method,$input??[]);
 handleAccountEmail($action,$method,$input??[]);
 handleAccountProfile($action,$method,$input??[]);
 handleAccountDeletion($action,$method,$input??[]);
@@ -88,7 +91,7 @@ if ($action==='register' && $method==='POST') {
   $db->beginTransaction();
   query('INSERT INTO users(name,email,password,recovery,created) VALUES(?,?,?,?,?)',[$name,$email,password_hash($password,PASSWORD_DEFAULT),password_hash($recovery,PASSWORD_DEFAULT),time()]);
   $newUserId=(int)$db->lastInsertId(); recordTerms($newUserId,'register'); $db->commit();
-  session_regenerate_id(true); $_SESSION['uid']=$newUserId; $_SESSION['auth']=hash('sha256',(string)query('SELECT password FROM users WHERE id=?',[$_SESSION['uid']])->fetchColumn()); $_SESSION['csrf']=bin2hex(random_bytes(32));
+  rotateSession(); $_SESSION['uid']=$newUserId; $_SESSION['auth']=hash('sha256',(string)query('SELECT password FROM users WHERE id=?',[$_SESSION['uid']])->fetchColumn()); $_SESSION['csrf']=bin2hex(random_bytes(32));
   $_SESSION['issued']=microtime(true);
   $sent=sendAuthEmail(user(),'verify');
   reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'email_sent'=>$sent,'message'=>$sent?'Cuenta creada. Revisa tu correo para confirmar tu dirección.':'Cuenta creada, pero no pudimos enviar el correo ahora. Reintenta el envío desde Mi cuenta.'],201);
@@ -100,7 +103,7 @@ if ($action==='login' && $method==='POST') {
   if(!password_verify($password,$u['password']??$dummy)||!$u) fail('Correo o contraseña incorrectos.',401);
   if($u['status']!=='active')fail('Esta cuenta está suspendida. Contacta a la administración.',403);
   $_SESSION['issued']=microtime(true);
-  session_regenerate_id(true); $_SESSION['uid']=(int)$u['id']; $_SESSION['auth']=hash('sha256',$u['password']); $_SESSION['csrf']=bin2hex(random_bytes(32)); reply(['user'=>user(),'csrf'=>$_SESSION['csrf']]);
+  rotateSession(); $_SESSION['uid']=(int)$u['id']; $_SESSION['auth']=hash('sha256',$u['password']); $_SESSION['csrf']=bin2hex(random_bytes(32)); reply(['user'=>user(),'csrf'=>$_SESSION['csrf']]);
 }
 if ($action==='recover' && $method==='POST') {
   limitRate('recover',8,3600); $email=strtolower(strvalInput($input,'email',5,254)); $code=strvalInput($input,'code',32,32); $password=strvalInput($input,'password',12,72);
@@ -114,9 +117,9 @@ if ($action==='recover' && $method==='POST') {
   query('UPDATE email_codes SET used=? WHERE user_id=? AND used IS NULL',[time(),$u['id']]);
   queuePasswordNotice((int)$u['id']);$db->commit();flushSecurityNotices();
   // Revoke all active sessions for this account by rotating its credential fingerprint.
-  session_regenerate_id(true); $_SESSION['uid']=(int)$u['id']; $_SESSION['auth']=hash('sha256',(string)query('SELECT password FROM users WHERE id=?',[$u['id']])->fetchColumn()); $_SESSION['csrf']=bin2hex(random_bytes(32)); reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'recovery'=>$newCode]);
+  rotateSession(); $_SESSION['uid']=(int)$u['id']; $_SESSION['auth']=hash('sha256',(string)query('SELECT password FROM users WHERE id=?',[$u['id']])->fetchColumn()); $_SESSION['csrf']=bin2hex(random_bytes(32)); reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'recovery'=>$newCode]);
 }
-if ($action==='logout' && $method==='POST') { $_SESSION=[]; session_regenerate_id(true); $_SESSION['csrf']=bin2hex(random_bytes(32)); reply(['csrf'=>$_SESSION['csrf']]); }
+if ($action==='logout' && $method==='POST') { $_SESSION=[]; rotateSession(); $_SESSION['csrf']=bin2hex(random_bytes(32)); reply(['csrf'=>$_SESSION['csrf']]); }
 if ($action==='list' && $method==='GET') {
   $where=['p.status="active"','EXISTS(SELECT 1 FROM users owner WHERE owner.id=p.user_id AND owner.status="active")']; $params=[];
   foreach(['state','city','neighborhood'] as $field){$value=$_GET[$field]??'';if(!is_string($value)||mb_strlen($value)>100)fail('Filtro de ubicación inválido.');if(trim($value)!==''){$function=$field==='state'?'state_key':'location_key';$where[]=$function.'(p.'.$field.')=?';$params[]=$function($value);}}

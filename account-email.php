@@ -43,6 +43,6 @@ function handleAccountEmail(string $action,string $method,array $input): void {
   $db->exec('COMMIT');
  }catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');throw $e;}
  flushSecurityNotices();
- session_regenerate_id(true);$_SESSION['issued']=microtime(true);$_SESSION['csrf']=bin2hex(random_bytes(32));
+ rotateSession();$_SESSION['issued']=microtime(true);$_SESSION['csrf']=bin2hex(random_bytes(32));
  reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'message'=>'Tu nuevo correo quedó confirmado y guardado. Úsalo para entrar y recuperar tu contraseña. Las demás sesiones se cerraron.']);
 }

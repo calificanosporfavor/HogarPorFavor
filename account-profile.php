@@ -31,6 +31,6 @@ function handleAccountProfile(string $action,string $method,array $input): void 
   $db->commit();
  }catch(Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
  flushSecurityNotices();
- session_regenerate_id(true);$_SESSION['auth']=hash('sha256',$hash);$_SESSION['issued']=microtime(true);$_SESSION['csrf']=bin2hex(random_bytes(32));
+ rotateSession();$_SESSION['auth']=hash('sha256',$hash);$_SESSION['issued']=microtime(true);$_SESSION['csrf']=bin2hex(random_bytes(32));
  reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'message'=>'Tu contraseña se cambió. Las demás sesiones se cerraron y los códigos de recuperación anteriores dejaron de funcionar.']);
 }

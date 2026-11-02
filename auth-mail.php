@@ -72,7 +72,7 @@ function handleEmailAction(string $action,string $method,array $input): void {
    if($purpose==='reset')queuePasswordNotice((int)$u['id']);
    $db->exec('COMMIT');
   }catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');throw $e;}
-  if($purpose==='reset'){flushSecurityNotices();$_SESSION=[];session_regenerate_id(true);$_SESSION['csrf']=bin2hex(random_bytes(32));reply(['message'=>'Tu contraseña cambió. Inicia sesión con la nueva contraseña.','csrf'=>$_SESSION['csrf']]);}
+  if($purpose==='reset'){flushSecurityNotices();$_SESSION=[];rotateSession();$_SESSION['csrf']=bin2hex(random_bytes(32));reply(['message'=>'Tu contraseña cambió. Inicia sesión con la nueva contraseña.','csrf'=>$_SESSION['csrf']]);}
   reply(['message'=>'Correo confirmado. Ya puedes publicar tus propiedades.','user'=>user()]);
  }
  if($action==='resend-verification'){
@@ -103,6 +103,6 @@ function handleEmailAction(string $action,string $method,array $input): void {
   if($purpose==='reset')queuePasswordNotice((int)$row['user_id']);
   $db->exec('COMMIT');
  }catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');throw $e;}
- if($purpose==='reset'){flushSecurityNotices();$_SESSION=[];session_regenerate_id(true);$_SESSION['csrf']=bin2hex(random_bytes(32));reply(['message'=>'Tu contraseña cambió. Inicia sesión con la nueva contraseña.','csrf'=>$_SESSION['csrf']]);}
+ if($purpose==='reset'){flushSecurityNotices();$_SESSION=[];rotateSession();$_SESSION['csrf']=bin2hex(random_bytes(32));reply(['message'=>'Tu contraseña cambió. Inicia sesión con la nueva contraseña.','csrf'=>$_SESSION['csrf']]);}
  reply(['message'=>'Correo confirmado. Ya puedes publicar tus propiedades.','user'=>user()]);
 }
