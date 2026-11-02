@@ -112,3 +112,7 @@ $('#email-check').addEventListener('click',async()=>{
 });
 
 $('#email-code-form').addEventListener('submit',e=>{e.preventDefault();busy($('#email-code-form'),async()=>{const code=$('#email-code-form').elements.code.value;const data=await api('verify-code',{code});currentUser=data.user;updateAccount();const next=afterAuth;afterAuth=null;notify(data.message);if(next)await next();else await showAccount();},$('#email-status'));});
+
+$('#delete-account-open').addEventListener('click',()=>{$('#delete-account-form').reset();$('#delete-account-status').textContent='';openDialog('#delete-account-dialog');});
+$('#delete-account-cancel').addEventListener('click',()=>{$('#delete-account-form').reset();showAccount();});
+$('#delete-account-form').addEventListener('submit',e=>{e.preventDefault();busy(e.target,async()=>{const values=Object.fromEntries(new FormData(e.target));values.confirm_delete=e.target.elements.confirm_delete.checked;const result=await api('delete-account',values);e.target.reset();currentUser=null;shownMine=[];clearPreviews();publish.reset();updateAccount();$('#my-properties').replaceChildren();$('#property-detail').replaceChildren();closeDialogs();csrf='';recoveryCode='';emailLinkToken='';emailLinkPurpose='';afterAuth=null;auth.reset();notify(result.message);try{await api('session');await loadProperties();}catch{};},$('#delete-account-status'));});
