@@ -18,10 +18,21 @@ function handleSavedSearches(string $action,string $method,array $input): void {
  global $db;$u=requireUser();$uid=(int)$u['id'];
  if($action==='saved-search-list'&&$method==='GET'){reply(['items'=>query('SELECT id,name,operation,state,city,neighborhood,type,budget,enabled,created FROM saved_searches WHERE user_id=? ORDER BY created DESC,id',[$uid])->fetchAll()]);}
  if($method!=='POST')fail('Método no permitido.',405);
- if($action==='saved-search-create'){
+ if(in_array($action,['saved-search-create','saved-search-update'],true)){
+  $editing=$action==='saved-search-update';
   requireVerified($u);$name=strvalInput($input,'name',2,70);$op=choice($input,'operation',['Renta','Venta']);$state=strvalInput($input,'state',2,70);$city=strvalInput($input,'city',0,100);$zone=strvalInput($input,'neighborhood',0,100);$type=$input['type']??'';if(!is_string($type)||!in_array($type,['','Casa','Departamento','Habitación','Terreno'],true))fail('Tipo de propiedad inválido.');$budget=integerInput($input,'budget',0,1000000000);
-  if($zone!==''&&$city==='')fail('Indica una ciudad o municipio para guardar una colonia.');if(($input['email_consent']??false)!==true)fail('Confirma que deseas recibir avisos de esta búsqueda.');
-  $db->exec('BEGIN IMMEDIATE');try{if((int)query('SELECT COUNT(*) FROM saved_searches WHERE user_id=?',[$uid])->fetchColumn()>=10){$db->exec('ROLLBACK');fail('Puedes guardar hasta 10 búsquedas. Elimina alguna para agregar otra.');}$id=bin2hex(random_bytes(12));query('INSERT INTO saved_searches(id,user_id,name,operation,state,city,neighborhood,type,budget,cursor,created) VALUES(?,?,?,?,?,?,?,?,?,?,?)',[$id,$uid,$name,$op,$state,$city,$zone,$type,$budget,publicationCursor(),time()]);$db->exec('COMMIT');}catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');throw $e;}reply(['id'=>$id],201);
+  if($zone!==''&&$city==='')fail('Indica una ciudad o municipio para guardar una colonia.');if(!$editing&&($input['email_consent']??false)!==true)fail('Confirma que deseas recibir avisos de esta búsqueda.');
+  $db->exec('BEGIN IMMEDIATE');try{
+   if($editing){
+    $id=strvalInput($input,'id',24,24);if(!query('SELECT 1 FROM saved_searches WHERE id=? AND user_id=?',[$id,$uid])->fetchColumn()){$db->exec('ROLLBACK');fail('Búsqueda no disponible.',404);}
+    query('UPDATE saved_searches SET name=?,operation=?,state=?,city=?,neighborhood=?,type=?,budget=?,cursor=? WHERE id=? AND user_id=?',[$name,$op,$state,$city,$zone,$type,$budget,publicationCursor(),$id,$uid]);
+    query('DELETE FROM search_mail_queue WHERE search_id=?',[$id]);
+   }else{
+    if((int)query('SELECT COUNT(*) FROM saved_searches WHERE user_id=?',[$uid])->fetchColumn()>=10){$db->exec('ROLLBACK');fail('Puedes guardar hasta 10 búsquedas. Elimina alguna para agregar otra.');}
+    $id=bin2hex(random_bytes(12));query('INSERT INTO saved_searches(id,user_id,name,operation,state,city,neighborhood,type,budget,cursor,created) VALUES(?,?,?,?,?,?,?,?,?,?,?)',[$id,$uid,$name,$op,$state,$city,$zone,$type,$budget,publicationCursor(),time()]);
+   }
+   $db->exec('COMMIT');
+  }catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');throw $e;}reply(['id'=>$id],$editing?200:201);
  }
  $id=strvalInput($input,'id',24,24);if(!query('SELECT 1 FROM saved_searches WHERE id=? AND user_id=?',[$id,$uid])->fetchColumn())fail('Búsqueda no disponible.',404);
  if($action==='saved-search-toggle'){
