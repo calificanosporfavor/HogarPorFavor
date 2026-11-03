@@ -57,6 +57,7 @@ require __DIR__.'/property-availability.php';
 require __DIR__.'/favorites.php';
 require __DIR__.'/favorites-mail.php';
 require __DIR__.'/saved-searches.php';
+require __DIR__.'/property-stats.php';
 flushSecurityNotices();
 function query(string $sql,array $params=[]): PDOStatement { global $db; $s=$db->prepare($sql); $s->execute($params); return $s; }
 function user(): ?array { if (!isset($_SESSION['uid'])) return null; $u=query('SELECT id,name,email,password,email_verified_at,status,revoked_at FROM users WHERE id=?',[(int)$_SESSION['uid']])->fetch(); if(currentSessionRevoked()||!$u||$u['status']!=='active'||(float)($_SESSION['issued']??0)<(float)$u['revoked_at']||!hash_equals(hash('sha256',$u['password']),(string)($_SESSION['auth']??''))){unset($_SESSION['uid'],$_SESSION['auth']);return null;}$u['email_verified']=$u['email_verified_at']!==null;trackAccountSession($u);$u['role']=strtolower($u['email'])===HOGAR_SUPERADMIN&&$u['email_verified']?'superadmin':'user';unset($u['password'],$u['email_verified_at'],$u['status'],$u['revoked_at']);return $u; }
@@ -94,6 +95,7 @@ handleAccountEmail($action,$method,$input??[]);
 handleAccountProfile($action,$method,$input??[]);
 handleAccountDeletion($action,$method,$input??[]);
 handleEmailAction($action,$method,$input??[]);
+handlePropertyStats($action,$method,$input??[]);
 handleAdminAction($action,$method,$input??[]);
 if ($action==='health' && $method==='GET') reply(['ready'=>true,'images'=>function_exists('imagecreatefromstring'),'email'=>function_exists('mail'),'version'=>5]);
 if ($action==='session' && $method==='GET') reply(['user'=>user(),'csrf'=>$_SESSION['csrf']]);
