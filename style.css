@@ -49,3 +49,5 @@
 .history-filters{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:24px 0 12px}.history-filters label{min-width:0}.history-query{grid-column:1/-1}.history-filters input{width:100%;min-width:0}.history-filters button{min-height:44px}@media(max-width:520px){.history-filters{grid-template-columns:1fr}.history-query{grid-column:auto}}
 
 .property-metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:24px 0}.property-metric-grid>div{padding:20px 14px;background:#f5f8ef;border-radius:16px}.property-metric-grid strong{display:block;font-size:30px;line-height:1.3}.property-metric-grid span{display:block;font-size:13px;margin-top:8px}@media(max-width:520px){.property-metric-grid{grid-template-columns:1fr}.property-metric-grid>div{display:flex;align-items:center;justify-content:space-between;gap:12px}.property-metric-grid span{margin:0}}
+
+.stats-period{display:block;font-weight:600;margin:20px 0;max-width:360px}.stats-period select{display:block;width:100%;min-height:48px;margin-top:8px;padding:12px 14px;border:1px solid #d9dcd3;border-radius:10px;background:#fff;color:#111;font:inherit}.stats-period[hidden]{display:none}
