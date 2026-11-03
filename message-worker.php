@@ -11,6 +11,6 @@ try{
  $lock=fopen($dataDir.'/message-worker.lock','c');if(!$lock)throw new RuntimeException('Worker lock unavailable');if(!flock($lock,LOCK_EX|LOCK_NB)){echo "Already running\n";exit(0);}
  $db=new PDO('sqlite:'.$dataDir.'/hogar.sqlite',null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);$db->exec('PRAGMA foreign_keys=ON;PRAGMA busy_timeout=5000;');
  function query(string $sql,array $params=[]): PDOStatement {global $db;$s=$db->prepare($sql);$s->execute($params);return $s;}
- define('HOGAR_INTERNAL',true);require __DIR__.'/auth-mail.php';require __DIR__.'/security-mail.php';require __DIR__.'/message-mail.php';
- flushSecurityNotices();$stats=flushCommunityMail();echo 'Message worker OK: '.json_encode($stats)."\n";flock($lock,LOCK_UN);fclose($lock);
+ define('HOGAR_INTERNAL',true);require __DIR__.'/auth-mail.php';require __DIR__.'/security-mail.php';require __DIR__.'/message-mail.php';require __DIR__.'/property-availability.php';
+ flushSecurityNotices();$stats=flushCommunityMail();$stats['properties']=flushPropertyReminders();echo 'Message worker OK: '.json_encode($stats)."\n";flock($lock,LOCK_UN);fclose($lock);
 }catch(Throwable $e){error_log('Hogar message worker: '.$e->getMessage());fwrite(STDERR,"Message worker failed\n");exit(1);}

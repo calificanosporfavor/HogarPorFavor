@@ -31,7 +31,7 @@ function handleAdminAction(string $action,string $method,array $input): void {
   reply(['items'=>$rows,'total'=>$total,'page'=>$page,'pages'=>(int)ceil($total/20)]);
  }
  if($action==='admin-properties'&&$method==='GET'){
-  $q=adminSearch();$status=$_GET['status']??'';if(!is_string($status)||!in_array($status,['','active','paused','archived'],true))fail('Estado inválido.');$where=['1=1'];$args=[];
+  $q=adminSearch();$status=$_GET['status']??'';if(!is_string($status)||!in_array($status,['','active','paused','rented','sold','archived'],true))fail('Estado inválido.');$where=['1=1'];$args=[];
   if($status!==''){$where[]='p.status=?';$args[]=$status;}if($q!==''){$where[]='(instr(lower(p.title),lower(?))>0 OR instr(lower(p.city),lower(?))>0 OR instr(lower(u.email),lower(?))>0)';array_push($args,$q,$q,$q);}
   $page=max(1,(int)($_GET['page']??1));$sql=implode(' AND ',$where);$total=(int)query('SELECT COUNT(*) FROM properties p JOIN users u ON u.id=p.user_id WHERE '.$sql,$args)->fetchColumn();$offset=min(1000000,($page-1)*20);
   $rows=query('SELECT p.*,u.name AS owner_name,u.email AS owner_email,u.status AS owner_status,u.email_verified_at AS owner_verified_at FROM properties p JOIN users u ON u.id=p.user_id WHERE '.$sql.' ORDER BY p.created DESC LIMIT 20 OFFSET '.$offset,$args)->fetchAll();
@@ -48,7 +48,7 @@ function handleAdminAction(string $action,string $method,array $input): void {
   if($status==='suspended')query('UPDATE users SET status=?,revoked_at=? WHERE id=?',[$status,microtime(true),$id]);else query('UPDATE users SET status=? WHERE id=?',[$status,$id]);auditAdmin($actor,'user_'.$status,(string)$id);reply(['ok'=>true]);
  }
  if($action==='admin-property-status'){
-  $id=strvalInput($input,'id',24,24);$status=choice($input,'status',['active','paused','archived']);$p=query('SELECT p.id,u.status AS owner_status,u.email_verified_at FROM properties p JOIN users u ON u.id=p.user_id WHERE p.id=?',[$id])->fetch();if(!$p)fail('Publicación no encontrada.',404);if($status==='active'&&($p['owner_status']!=='active'||$p['email_verified_at']===null))fail('Para publicar, la cuenta propietaria debe estar activa y tener el correo confirmado.');query('UPDATE properties SET status=?,updated=? WHERE id=?',[$status,time(),$id]);auditAdmin($actor,'property_'.$status,$id);reply(['ok'=>true]);
+  $id=strvalInput($input,'id',24,24);$status=choice($input,'status',['active','paused','archived']);$p=query('SELECT p.id,u.status AS owner_status,u.email_verified_at FROM properties p JOIN users u ON u.id=p.user_id WHERE p.id=?',[$id])->fetch();if(!$p)fail('Publicación no encontrada.',404);if($status==='active'&&($p['owner_status']!=='active'||$p['email_verified_at']===null))fail('Para publicar, la cuenta propietaria debe estar activa y tener el correo confirmado.');query('UPDATE properties SET status=?,updated=? WHERE id=?',[$status,time(),$id]);if($status==='active')confirmPropertyAvailability($id);auditAdmin($actor,'property_'.$status,$id);reply(['ok'=>true]);
  }
  if($action==='admin-property-update'){
   $id=strvalInput($input,'id',24,24);if(!query('SELECT id FROM properties WHERE id=?',[$id])->fetch())fail('Publicación no encontrada.',404);

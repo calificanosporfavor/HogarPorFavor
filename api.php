@@ -53,6 +53,7 @@ require __DIR__.'/hero.php';
 require __DIR__.'/roomies.php';
 require __DIR__.'/community.php';
 require __DIR__.'/message-mail.php';
+require __DIR__.'/property-availability.php';
 flushSecurityNotices();
 function query(string $sql,array $params=[]): PDOStatement { global $db; $s=$db->prepare($sql); $s->execute($params); return $s; }
 function user(): ?array { if (!isset($_SESSION['uid'])) return null; $u=query('SELECT id,name,email,password,email_verified_at,status,revoked_at FROM users WHERE id=?',[(int)$_SESSION['uid']])->fetch(); if(currentSessionRevoked()||!$u||$u['status']!=='active'||(float)($_SESSION['issued']??0)<(float)$u['revoked_at']||!hash_equals(hash('sha256',$u['password']),(string)($_SESSION['auth']??''))){unset($_SESSION['uid'],$_SESSION['auth']);return null;}$u['email_verified']=$u['email_verified_at']!==null;trackAccountSession($u);$u['role']=strtolower($u['email'])===HOGAR_SUPERADMIN&&$u['email_verified']?'superadmin':'user';unset($u['password'],$u['email_verified_at'],$u['status'],$u['revoked_at']);return $u; }
@@ -61,7 +62,7 @@ function strvalInput(array $input,string $name,int $min,int $max): string { $v=$
 function integerInput(array $input,string $name,int $min,int $max): int { $v=filter_var($input[$name]??null,FILTER_VALIDATE_INT); if($v===false||$v<$min||$v>$max) fail('Revisa el campo '.$name.'.'); return $v; }
 function choice(array $input,string $name,array $values): string { $v=strvalInput($input,$name,1,30); if(!in_array($v,$values,true)) fail('Selecciona una opción válida.'); return $v; }
 function limitRate(string $scope,int $maximum,int $window): void { $identity=$_SERVER['REMOTE_ADDR']??'local'; $key=hash('sha256',$scope.'|'.$identity); $now=time(); query('DELETE FROM limits WHERE expires<?',[$now]); query('INSERT INTO limits(key,count,expires) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1',[$key,$now+$window]); $row=query('SELECT count FROM limits WHERE key=?',[$key])->fetch(); if((int)$row['count']>$maximum) { header('Retry-After: '.$window); fail('Demasiados intentos. Espera unos minutos antes de intentar otra vez.',429); } }
-function propertyData(array $p,bool $owner=false): array { $p['price']=(int)$p['price']; $p['bedrooms']=(int)$p['bedrooms']; $p['bathrooms']=(int)$p['bathrooms']; $p['area']=(int)$p['area']; $p['photos']=query('SELECT id FROM photos WHERE property_id=? ORDER BY position',[$p['id']])->fetchAll(PDO::FETCH_COLUMN); $p['profile_id']=query('SELECT p.id FROM community_profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=? AND p.visible=1 AND u.status="active" AND u.email_verified_at IS NOT NULL',[$p['user_id']??0])->fetchColumn()?:null; unset($p['user_id']); if(!$owner) unset($p['email']); return $p; }
+function propertyData(array $p,bool $owner=false): array { $p['price']=(int)$p['price']; $p['bedrooms']=(int)$p['bedrooms']; $p['bathrooms']=(int)$p['bathrooms']; $p['area']=(int)$p['area']; $p['photos']=query('SELECT id FROM photos WHERE property_id=? ORDER BY position',[$p['id']])->fetchAll(PDO::FETCH_COLUMN); $p['availability_confirmed_at']=(int)(query('SELECT confirmed_at FROM property_availability WHERE property_id=?',[$p['id']])->fetchColumn()?:0); $p['profile_id']=query('SELECT p.id FROM community_profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=? AND p.visible=1 AND u.status="active" AND u.email_verified_at IS NOT NULL',[$p['user_id']??0])->fetchColumn()?:null; unset($p['user_id']); if(!$owner) unset($p['email']); return $p; }
 function selectProperty(string $id): ?array { return query('SELECT p.*,u.name AS owner_name,u.status AS owner_status FROM properties p JOIN users u ON u.id=p.user_id WHERE p.id=?',[$id])->fetch() ?: null; }
 if(isset($_SESSION['uid']))user();
 if ($method==='POST') {
@@ -77,6 +78,7 @@ if(defined('HOGAR_ADMIN_PAGE')) {
  if($method!=='GET'||!isSuperadmin()){http_response_code(404);echo '<!doctype html><html lang="es"><meta charset="utf-8"><title>No encontrado</title><h1>Página no encontrada.</h1></html>';exit;}
  require __DIR__.'/admin-view.php';exit;
 }
+handlePropertyAvailability($action,$method,$input??[]);
 handleCommunityMail($action,$method,$input??[]);
 handleCommunity($action,$method,$input??[]);
 handleRoomies($action,$method,$input??[]);
@@ -162,7 +164,8 @@ if(in_array($action,['create','update'],true) && $method==='POST') {
   if($contactType==='Correo') {if(!filter_var($contact,FILTER_VALIDATE_EMAIL)) fail('Escribe un correo de contacto válido.');} else {$contact=preg_replace('/[^0-9]/','',$contact);if(strlen($contact)<10||strlen($contact)>15)fail('Usa un teléfono de 10 a 15 dígitos, con código de país para WhatsApp.');if(strlen($contact)===10)$contact='52'.$contact;}
   if(($input['contact_consent']??'')!=='1') fail('Autoriza mostrar el contacto de este anuncio.');
   $beds=integerInput($input,'bedrooms',0,100);$baths=integerInput($input,'bathrooms',0,100);$area=integerInput($input,'area',0,10000000);
-  $status=choice($input,'status',['active','paused']);
+  $status=choice($input,'status',['active','paused','rented','sold']);
+  validatePropertyOutcome($status,$op);
   if($status==='active')requireVerified($u);
   $uploads=$_FILES['photos']??null; $count=0;
   if($uploads && is_array($uploads['error'])) foreach($uploads['error'] as $error) {if($error!==UPLOAD_ERR_NO_FILE)$count++;}
@@ -189,11 +192,12 @@ if(in_array($action,['create','update'],true) && $method==='POST') {
     if($action==='create')query('INSERT INTO properties(id,user_id,title,operation,type,price,state,city,neighborhood,description,contact_type,contact,bedrooms,bathrooms,area,status,created,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[$id,$u['id'],$title,$op,$type,$price,$state,$city,$zone,$desc,$contactType,$contact,$beds,$baths,$area,$status,$now,$now]);
     else query('UPDATE properties SET title=?,operation=?,type=?,price=?,state=?,city=?,neighborhood=?,description=?,contact_type=?,contact=?,bedrooms=?,bathrooms=?,area=?,status=?,updated=? WHERE id=? AND user_id=?',[$title,$op,$type,$price,$state,$city,$zone,$desc,$contactType,$contact,$beds,$baths,$area,$status,$now,$id,$u['id']]);
     $oldPhotos=[];if(count($prepared)>0){$oldPhotos=query('SELECT file FROM photos WHERE property_id=?',[$id])->fetchAll(PDO::FETCH_COLUMN);query('DELETE FROM photos WHERE property_id=?',[$id]);foreach($prepared as $i=>$ph)query('INSERT INTO photos(id,property_id,file,position) VALUES(?,?,?,?)',[$ph['id'],$id,$ph['file'],$i]);}
+    if($status==='active')confirmPropertyAvailability($id);
     recordTerms((int)$u['id'],$action,$id);
     $db->commit();foreach($oldPhotos as $file)@unlink($dataDir.'/photos/'.$file);
   } catch(Throwable $e) {if($db->inTransaction())$db->rollBack();foreach($prepared as $ph)@unlink($dataDir.'/photos/'.$ph['file']);if($e instanceof InvalidArgumentException)fail($e->getMessage());throw $e;}
   reply(['property'=>propertyData(selectProperty($id),true)],$action==='create'?201:200);
 }
-if($action==='status' && $method==='POST') {$u=requireUser();$id=strvalInput($input,'id',24,24);$status=choice($input,'status',['active','paused']);$p=selectProperty($id);if(!$p||(int)$p['user_id']!==(int)$u['id'])fail('Anuncio no disponible.',404);if($p['status']==='archived')fail('La publicación está archivada por administración.',403);if($status==='active'){requireVerified($u);requireTerms($input);}$db->beginTransaction();query('UPDATE properties SET status=?,updated=? WHERE id=?',[$status,time(),$id]);if($status==='active')recordTerms((int)$u['id'],'reactivate',$id);$db->commit();reply(['ok'=>true]);}
+if($action==='status' && $method==='POST') {$u=requireUser();$id=strvalInput($input,'id',24,24);$status=choice($input,'status',['active','paused','rented','sold']);$p=selectProperty($id);if(!$p||(int)$p['user_id']!==(int)$u['id'])fail('Anuncio no disponible.',404);if($p['status']==='archived')fail('La publicación está archivada por administración.',403);validatePropertyOutcome($status,$p['operation']);if($status==='active'){requireVerified($u);requireTerms($input);}$db->beginTransaction();query('UPDATE properties SET status=?,updated=? WHERE id=?',[$status,time(),$id]);if($status==='active'){confirmPropertyAvailability($id);recordTerms((int)$u['id'],'reactivate',$id);}$db->commit();reply(['ok'=>true]);}
 if($action==='report' && $method==='POST') {$u=requireUser();limitRate('report',10,3600);$id=strvalInput($input,'id',24,24);$reason=strvalInput($input,'reason',10,1000);$p=selectProperty($id);if(!$p||$p['status']!=='active')fail('Anuncio no disponible.',404);query('INSERT INTO reports(property_id,user_id,reason,created) VALUES(?,?,?,?) ON CONFLICT(property_id,user_id) DO UPDATE SET reason=excluded.reason,created=excluded.created,resolved_at=NULL',[$id,$u['id'],$reason,time()]);reply(['ok'=>true]);}
 fail('Operación no disponible.',404);
