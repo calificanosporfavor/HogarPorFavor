@@ -1,0 +1,11 @@
+<?php
+declare(strict_types=1);
+if(!defined('HOGAR_INTERNAL')){http_response_code(404);exit;}
+function handleDraftDeletion(string $action,string $method,array $input): void {
+ if($action!=='draft-delete')return;if($method!=='POST')fail('Método no permitido.',405);$u=requireUser();$id=strvalInput($input,'id',24,24);if(!preg_match('/^[a-f0-9]{24}$/D',$id))fail('Borrador no disponible.',404);if(($input['confirm_delete']??null)!==true)fail('Confirma que deseas eliminar el borrador y sus fotos.',422);limitRate('draft-delete',30,3600);
+ global $db,$dataDir;$stage=$dataDir.'/erase-'.bin2hex(random_bytes(16));$staged=[];$db->exec('PRAGMA secure_delete=ON');$db->exec('BEGIN IMMEDIATE');
+ try{$p=query('SELECT user_id,status,updated FROM properties WHERE id=?',[$id])->fetch();if(!$p||(int)$p['user_id']!==(int)$u['id']){$db->exec('ROLLBACK');fail('Borrador no disponible.',404);}if($p['status']!=='draft'){$db->exec('ROLLBACK');fail('Solo puedes eliminar borradores desde esta opción. La publicación se conserva.',409);}if((string)($input['draft_revision']??'')!==(string)$p['updated']){$db->exec('ROLLBACK');fail('El borrador cambió en otra ventana. Actualiza Mi cuenta y revísalo antes de eliminarlo.',409);}
+ $photos=query('SELECT file FROM photos WHERE property_id=?',[$id])->fetchAll(PDO::FETCH_COLUMN);if($photos&&!mkdir($stage,0700))throw new RuntimeException('Cannot prepare draft deletion');foreach($photos as $file){if(!preg_match('/^[a-f0-9]{32}\.jpg$/D',$file))throw new RuntimeException('Invalid draft image name');$from=$dataDir.'/photos/'.$file;if(!is_file($from))continue;if(!rename($from,$stage.'/'.$file))throw new RuntimeException('Cannot prepare draft image');$staged[]=$file;}query('DELETE FROM properties WHERE id=? AND user_id=? AND status="draft"',[$id,$u['id']]);$db->exec('COMMIT');
+ }catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');foreach($staged as $file)@rename($stage.'/'.$file,$dataDir.'/photos/'.$file);@rmdir($stage);throw $e;}
+ if(is_dir($stage))@touch($stage.'/.ready');cleanupDeletedPhotos();$clean=!is_dir($stage);try{$db->exec('PRAGMA wal_checkpoint(TRUNCATE)');}catch(Throwable $ignored){}reply(['ok'=>true,'photos_pending'=>!$clean,'message'=>$clean?'Borrador y fotos eliminados.':'Borrador eliminado. Sus fotos ya no son accesibles y su borrado se reintentará automáticamente.']);
+}
