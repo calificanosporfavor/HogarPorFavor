@@ -42,10 +42,22 @@ function publicationCursor(): int {return (int)query('SELECT COALESCE(MAX(id),0)
 function searchMatches(array $s,array $p): bool {
  return $p['status']==='active'&&$p['owner_status']==='active'&&(int)$p['user_id']!==(int)$s['user_id']&&$p['operation']===$s['operation']&&state_key($p['state'])===state_key($s['state'])&&($s['city']===''||location_key($p['city'])===location_key($s['city']))&&($s['neighborhood']===''||location_key($p['neighborhood'])===location_key($s['neighborhood']))&&($s['type']===''||$p['type']===$s['type'])&&((int)$s['budget']===0||(int)$p['price']<=(int)$s['budget']);
 }
+function searchNextNotice(array $search,?int $now=null): array {
+ $now??=time();$result=['next_notice_at'=>null,'notice_state'=>'paused','notice_pending'=>false];if(!(int)$search['enabled'])return $result;
+ $verified=query('SELECT email_verified_at FROM users WHERE id=?',[$search['user_id']])->fetchColumn();if($verified===false||$verified===null){$result['notice_state']='verify';return $result;}
+ $pending=[];foreach(query('SELECT q.created AS queued_at,q.next_attempt,p.*,u.status AS owner_status FROM search_mail_queue q JOIN properties p ON p.id=q.property_id JOIN users u ON u.id=p.user_id WHERE q.search_id=?',[$search['id']])->fetchAll() as $p)if(searchMatches($search,$p))$pending[]=$p;
+ $result['notice_pending']=(bool)$pending;$result['notice_state']=$search['frequency']==='immediate'&&!$pending?'review':($pending?'pending':'scheduled');
+ if($search['frequency']==='immediate')$due=$now;
+ else{$due=(int)$search['delivery_after'];if($due<=$now){if(!$pending)$due=searchNextSlot($search,$now);elseif(min(array_column($pending,'queued_at'))>$due+300)$due=searchNextSlot($search,(int)min(array_column($pending,'queued_at'))-301);}}
+ if($pending)$due=max($due,(int)min(array_column($pending,'next_attempt')));
+ // Global recipient caps can postpone the estimate; shared service quotas are not predictable.
+ if($result['notice_state']!=='review'){$limits=query('SELECT * FROM search_mail_limits WHERE user_id=?',[$search['user_id']])->fetch();if($limits){$due=max($due,(int)$limits['last_sent']+3600);if((int)$limits['day_start']>$now-86400&&(int)$limits['day_count']>=3)$due=max($due,(int)$limits['day_start']+86400);}}
+ $result['next_notice_at']=(int)(ceil(max($now+1,$due)/300)*300);return $result;
+}
 function handleSavedSearches(string $action,string $method,array $input): void {
  if(!str_starts_with($action,'saved-search-'))return;
  global $db;$u=requireUser();$uid=(int)$u['id'];
- if($action==='saved-search-list'&&$method==='GET'){reply(['items'=>query('SELECT id,name,operation,state,city,neighborhood,type,budget,enabled,created,frequency,send_time,week_day FROM saved_searches WHERE user_id=? ORDER BY created DESC,id',[$uid])->fetchAll()]);}
+ if($action==='saved-search-list'&&$method==='GET'){$items=[];foreach(query('SELECT * FROM saved_searches WHERE user_id=? ORDER BY created DESC,id',[$uid])->fetchAll() as $row){$meta=searchNextNotice($row);unset($row['user_id'],$row['cursor'],$row['delivery_after'],$row['last_notice']);$items[]=$row+$meta;}reply(['items'=>$items]);}
  if($method!=='POST')fail('Método no permitido.',405);
  if(in_array($action,['saved-search-create','saved-search-update'],true)){
   $editing=$action==='saved-search-update';
@@ -67,7 +79,7 @@ function handleSavedSearches(string $action,string $method,array $input): void {
  $id=strvalInput($input,'id',24,24);if(!query('SELECT 1 FROM saved_searches WHERE id=? AND user_id=?',[$id,$uid])->fetchColumn())fail('Búsqueda no disponible.',404);
  if(in_array($action,['saved-search-frequency','saved-search-schedule'],true)){
   $frequency=$action==='saved-search-frequency'?choice($input,'frequency',['immediate','daily','weekly']):null;[$clock,$day]=searchScheduleInput($input);if($action==='saved-search-schedule'&&$clock===null)fail('Selecciona la hora de tus avisos.');
-  $db->exec('BEGIN IMMEDIATE');try{$row=applySearchSchedule($id,$uid,$frequency,$clock,$day);$db->exec('COMMIT');}catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');throw $e;}reply(['frequency'=>$row['frequency'],'send_time'=>$row['send_time'],'week_day'=>(int)$row['week_day']]);
+  $db->exec('BEGIN IMMEDIATE');try{$row=applySearchSchedule($id,$uid,$frequency,$clock,$day);$db->exec('COMMIT');}catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');throw $e;}$fresh=query('SELECT * FROM saved_searches WHERE id=? AND user_id=?',[$id,$uid])->fetch();reply(['frequency'=>$row['frequency'],'send_time'=>$row['send_time'],'week_day'=>(int)$row['week_day']]+searchNextNotice($fresh));
  }
  if($action==='saved-search-toggle'){
   if(!is_bool($input['enabled']??null))fail('Selecciona una opción válida.');if($input['enabled'])requireVerified($u);
