@@ -45,6 +45,7 @@ migrateAdmin();
 require __DIR__.'/terms.php';
 require __DIR__.'/account-delete.php';
 require __DIR__.'/draft-delete.php';
+$db->exec('CREATE TABLE IF NOT EXISTS draft_save_receipts(property_id TEXT PRIMARY KEY REFERENCES properties(id) ON DELETE CASCADE,request_id TEXT NOT NULL)');
 require __DIR__.'/account-profile.php';
 require __DIR__.'/account-email.php';
 require __DIR__.'/security-mail.php';
@@ -165,8 +166,8 @@ if($action==='photo' && $method==='GET') {
 }
 if(in_array($action,['create','update','draft-save'],true) && $method==='POST') {
   $draft=$action==='draft-save';if($draft)$action=empty($input['id'])?'create':'update';
-  $u=requireUser(); if(!$draft)requireTerms($input); limitRate('publish',30,3600);
-  $id=$action==='create'?($draft?strvalInput($input,'draft_token',24,24):bin2hex(random_bytes(12))):strvalInput($input,'id',24,24);if(!preg_match('/^[a-f0-9]{24}$/D',$id))fail('Identificador inválido.');if($draft&&$action==='create'&&query('SELECT 1 FROM properties WHERE id=?',[$id])->fetch())fail('Este borrador ya se guardó. Retómalo desde Mi cuenta para continuar.',409);
+  $u=requireUser(); if(!$draft)requireTerms($input); limitRate($draft?'draft-save':'publish',$draft?900:30,3600);$saveRequest=$draft?(string)($input['save_request']??''):'';if($saveRequest!==''&&!preg_match('/^[a-f0-9]{32}$/D',$saveRequest))fail('Solicitud de guardado inválida.');
+  $id=$action==='create'?($draft?strvalInput($input,'draft_token',24,24):bin2hex(random_bytes(12))):strvalInput($input,'id',24,24);if(!preg_match('/^[a-f0-9]{24}$/D',$id))fail('Identificador inválido.');if($draft&&$saveRequest!==''){$prior=query('SELECT p.*,u.name AS owner_name FROM properties p JOIN users u ON u.id=p.user_id JOIN draft_save_receipts r ON r.property_id=p.id WHERE p.id=? AND p.user_id=? AND p.status="draft" AND r.request_id=?',[$id,$u['id'],$saveRequest])->fetch();if($prior)reply(['property'=>propertyData($prior,true),'message'=>'Borrador guardado.']);}if($draft&&$action==='create'&&query('SELECT 1 FROM properties WHERE id=?',[$id])->fetch())fail('Este borrador ya se guardó. Retómalo desde Mi cuenta para continuar.',409);
   if($action==='update'){ $old=selectProperty($id); if(!$old||(int)$old['user_id']!==(int)$u['id']) fail('Anuncio no disponible.',404);if($draft&&$old['status']!=='draft')fail('Solo puedes guardar como borrador una publicación que todavía no se ha publicado.',409);if($old['status']==='draft'&&(string)($input['draft_revision']??'')!==(string)$old['updated'])fail('El borrador cambió en otra ventana. Retómalo desde Mi cuenta antes de guardar.',409);if($old['status']==='archived')fail('La publicación está archivada por administración.',403); }
   if($action==='create'&&(int)query('SELECT COUNT(*) FROM properties WHERE user_id=?',[$u['id']])->fetchColumn()>=30) fail('Puedes mantener hasta 30 anuncios. Edita o pausa uno de los existentes.');
   if($draft){
@@ -208,7 +209,7 @@ if(in_array($action,['create','update','draft-save'],true) && $method==='POST') 
     else query('UPDATE properties SET title=?,operation=?,type=?,price=?,state=?,city=?,neighborhood=?,description=?,contact_type=?,contact=?,bedrooms=?,bathrooms=?,area=?,status=?,updated=? WHERE id=? AND user_id=?',[$title,$op,$type,$price,$state,$city,$zone,$desc,$contactType,$contact,$beds,$baths,$area,$status,$now,$id,$u['id']]);
     $oldPhotos=[];if(count($prepared)>0){$oldPhotos=query('SELECT file FROM photos WHERE property_id=?',[$id])->fetchAll(PDO::FETCH_COLUMN);query('DELETE FROM photos WHERE property_id=?',[$id]);foreach($prepared as $i=>$ph)query('INSERT INTO photos(id,property_id,file,position) VALUES(?,?,?,?)',[$ph['id'],$id,$ph['file'],$i]);}
     if($status==='active')confirmPropertyAvailability($id);
-    if(!$draft)recordTerms((int)$u['id'],$action,$id);
+    if(!$draft)recordTerms((int)$u['id'],$action,$id);else if($saveRequest!=='')query('INSERT INTO draft_save_receipts(property_id,request_id) VALUES(?,?) ON CONFLICT(property_id) DO UPDATE SET request_id=excluded.request_id',[$id,$saveRequest]);
     $db->commit();foreach($oldPhotos as $file)@unlink($dataDir.'/photos/'.$file);
   } catch(Throwable $e) {if($db->inTransaction())$db->rollBack();foreach($prepared as $ph)@unlink($dataDir.'/photos/'.$ph['file']);if($e instanceof InvalidArgumentException)fail($e->getMessage());throw $e;}
   reply(['property'=>propertyData(selectProperty($id),true),'message'=>$draft?'Borrador guardado. Solo tú puedes verlo desde Mi cuenta.':'Publicación guardada correctamente.'],$action==='create'?201:200);
