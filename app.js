@@ -9,10 +9,10 @@ function consumeEmailFragment(){const params=new URLSearchParams(location.hash.s
 consumeEmailFragment();
 window.addEventListener('hashchange',()=>{if(consumeEmailFragment())sessionReady.then(handleIncomingEmailLink).catch(e=>notify(e.message));});
 $('#year').textContent=new Date().getFullYear();
-function notify(message){$('#toast').textContent=message;$('#toast').hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$('#toast').hidden=true,6000);}
+function notify(message,type='info'){window.hogarFeedback.show(message,type);}
 function closeDialogs(){document.querySelectorAll('dialog[open]').forEach(d=>d.close());}
 function openDialog(id){closeDialogs();$(id).showModal();}
-async function api(action,body,query={}){const done=body!==undefined&&action!=='property-metric'?window.hogarBusy.begin():()=>{};try{return await apiRequest(action,body,query);}finally{done();}}
+async function api(action,body,query={}){const mutation=body!==undefined&&action!=='property-metric',restore=mutation?window.hogarFeedback.snapshot(window.hogarBusy.source()):()=>{},done=mutation?window.hogarBusy.begin():()=>{};try{const data=await apiRequest(action,body,query);if(mutation)window.hogarFeedback.success(action,data);return data;}catch(e){if(mutation){restore();window.hogarFeedback.show(e.message,'error');}throw e;}finally{restore.dispose?.();done();}}
 async function apiRequest(action,body,query={}){
  const url=new URL('api.php',location.href);url.searchParams.set('action',action);for(const [k,v] of Object.entries(query))if(v!==''&&v!==undefined)url.searchParams.set(k,v);
  const options={credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}};if(action==='property-metric')options.keepalive=true;
@@ -22,7 +22,7 @@ async function apiRequest(action,body,query={}){
  if(!response.ok){if(response.status===401&&!['login','recover'].includes(action)){currentUser=null;updateAccount();}throw Error(data.error||'No pudimos completar la operación.');}if(data.csrf)csrf=data.csrf;return data;
 }
 function updateAccount(){$('#account-label').textContent=currentUser?'Mi cuenta':'Entrar / Registrarme';window.hogarCommunity?.syncSession();window.hogarFavorites?.syncSession();window.hogarSearches?.syncSession();}
-async function busy(form,fn,status){if(window.hogarBusy.locked(form))return;const done=window.hogarBusy.begin(form);status.textContent='Un momento…';try{await fn();}catch(e){status.textContent=e.message;}finally{done();}}
+async function busy(form,fn,status){if(window.hogarBusy.locked(form))return;const before=window.hogarFeedback.revision(),restore=window.hogarFeedback.snapshot(form),done=window.hogarBusy.begin(form);delete status.dataset.kind;status.textContent='Un momento…';try{await fn();}catch(e){if(window.hogarFeedback.revision()===before){restore();status.textContent=e.message;status.dataset.kind='error';window.hogarFeedback.show(e.message,'error');}else{status.textContent='La acción se completó, pero no pudimos actualizar la vista. Actualiza para revisar el resultado.';window.hogarFeedback.show(status.textContent,'info');}}finally{restore.dispose?.();done();}}
 
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
 
