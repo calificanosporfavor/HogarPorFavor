@@ -154,18 +154,22 @@ if ($action==='list' && $method==='GET') {
   reply(['properties'=>array_map(fn($p)=>propertyData($p),$rows),'total'=>$count,'page'=>$page,'pages'=>(int)ceil($count/12)]);
 }
 if($action==='mine' && $method==='GET') { $u=requireUser(); $rows=query('SELECT p.*,u.name AS owner_name FROM properties p JOIN users u ON u.id=p.user_id WHERE user_id=? AND p.status!="archived" ORDER BY created DESC',[$u['id']])->fetchAll(); reply(['properties'=>array_map(fn($p)=>propertyData($p,true),$rows)]); }
-if($action==='detail' && $method==='GET') { $p=selectProperty((string)($_GET['id']??''));$viewer=user();if(!$p||(($p['status']!=='active'||$p['owner_status']!=='active')&&((int)$p['user_id']!==(int)($viewer['id']??0))&&!isSuperadmin($viewer))) fail('Este anuncio no está disponible.',404); reply(['property'=>propertyData($p)]); }
+if($action==='detail' && $method==='GET') { $p=selectProperty((string)($_GET['id']??''));$viewer=user();if($p&&$p['status']==='draft'&&(int)$p['user_id']!==(int)($viewer['id']??0))fail('Este anuncio no está disponible.',404);if(!$p||(($p['status']!=='active'||$p['owner_status']!=='active')&&((int)$p['user_id']!==(int)($viewer['id']??0))&&!isSuperadmin($viewer))) fail('Este anuncio no está disponible.',404); reply(['property'=>propertyData($p)]); }
 if($action==='photo' && $method==='GET') {
   $photo=query('SELECT ph.*,p.status,p.user_id,u.status AS owner_status FROM photos ph JOIN properties p ON p.id=ph.property_id JOIN users u ON u.id=p.user_id WHERE ph.id=?',[(string)($_GET['id']??'')])->fetch();
-  $viewer=user();if(!$photo||(($photo['status']!=='active'||$photo['owner_status']!=='active')&&(int)$photo['user_id']!==(int)($viewer['id']??0)&&!isSuperadmin($viewer))) fail('Imagen no disponible.',404);
+  $viewer=user();if($photo&&$photo['status']==='draft'&&(int)$photo['user_id']!==(int)($viewer['id']??0))fail('Imagen no disponible.',404);if(!$photo||(($photo['status']!=='active'||$photo['owner_status']!=='active')&&(int)$photo['user_id']!==(int)($viewer['id']??0)&&!isSuperadmin($viewer))) fail('Imagen no disponible.',404);
   $file=$dataDir.'/photos/'.$photo['file']; if(!is_file($file)) fail('Imagen no disponible.',404);
   session_write_close(); header('Content-Type: image/jpeg'); header('Content-Length: '.filesize($file)); readfile($file); exit;
 }
-if(in_array($action,['create','update'],true) && $method==='POST') {
-  $u=requireUser(); requireTerms($input); limitRate('publish',30,3600);
-  $id=$action==='create'?bin2hex(random_bytes(12)):strvalInput($input,'id',24,24);
-  if($action==='update'){ $old=selectProperty($id); if(!$old||(int)$old['user_id']!==(int)$u['id']) fail('Anuncio no disponible.',404);if($old['status']==='archived')fail('La publicación está archivada por administración.',403); }
+if(in_array($action,['create','update','draft-save'],true) && $method==='POST') {
+  $draft=$action==='draft-save';if($draft)$action=empty($input['id'])?'create':'update';
+  $u=requireUser(); if(!$draft)requireTerms($input); limitRate('publish',30,3600);
+  $id=$action==='create'?($draft?strvalInput($input,'draft_token',24,24):bin2hex(random_bytes(12))):strvalInput($input,'id',24,24);if(!preg_match('/^[a-f0-9]{24}$/D',$id))fail('Identificador inválido.');if($draft&&$action==='create'&&query('SELECT 1 FROM properties WHERE id=?',[$id])->fetch())fail('Este borrador ya se guardó. Retómalo desde Mi cuenta para continuar.',409);
+  if($action==='update'){ $old=selectProperty($id); if(!$old||(int)$old['user_id']!==(int)$u['id']) fail('Anuncio no disponible.',404);if($draft&&$old['status']!=='draft')fail('Solo puedes guardar como borrador una publicación que todavía no se ha publicado.',409);if($old['status']==='draft'&&(string)($input['draft_revision']??'')!==(string)$old['updated'])fail('El borrador cambió en otra ventana. Retómalo desde Mi cuenta antes de guardar.',409);if($old['status']==='archived')fail('La publicación está archivada por administración.',403); }
   if($action==='create'&&(int)query('SELECT COUNT(*) FROM properties WHERE user_id=?',[$u['id']])->fetchColumn()>=30) fail('Puedes mantener hasta 30 anuncios. Edita o pausa uno de los existentes.');
+  if($draft){
+   $title=strvalInput($input,'title',0,100);$op=choice($input,'operation',['Renta','Venta']);$type=choice($input,'type',['Casa','Departamento','Habitación','Terreno']);$price=trim((string)($input['price']??''))===''?0:integerInput($input,'price',0,1000000000);$state=strvalInput($input,'state',0,70);$city=strvalInput($input,'city',0,100);$zone=strvalInput($input,'neighborhood',0,100);$desc=strvalInput($input,'description',0,5000);$contactType=choice($input,'contact_type',['WhatsApp','Teléfono','Correo']);$contact=strvalInput($input,'contact',0,254);$beds=integerInput($input,'bedrooms',0,100);$baths=integerInput($input,'bathrooms',0,100);$area=integerInput($input,'area',0,10000000);$status='draft';
+  }else{
   $title=strvalInput($input,'title',8,100); $op=choice($input,'operation',['Renta','Venta']); $type=choice($input,'type',['Casa','Departamento','Habitación','Terreno']);
   $price=integerInput($input,'price',1,1000000000); $state=strvalInput($input,'state',2,70); $city=strvalInput($input,'city',2,100); $zone=strvalInput($input,'neighborhood',0,100); $desc=strvalInput($input,'description',30,5000);
   $contactType=choice($input,'contact_type',['WhatsApp','Teléfono','Correo']); $contact=strvalInput($input,'contact',5,254);
@@ -175,11 +179,12 @@ if(in_array($action,['create','update'],true) && $method==='POST') {
   $status=choice($input,'status',['active','paused','rented','sold']);
   validatePropertyOutcome($status,$op);
   if($status==='active')requireVerified($u);
+  }
   $uploads=$_FILES['photos']??null; $count=0;
   if($uploads && is_array($uploads['error'])) foreach($uploads['error'] as $error) {if($error!==UPLOAD_ERR_NO_FILE)$count++;}
   if($count>8) fail('Sube como máximo 8 fotos.');
   $existing=$action==='update'?(int)query('SELECT COUNT(*) FROM photos WHERE property_id=?',[$id])->fetchColumn():0;
-  if($count===0&&$existing===0) fail('Agrega al menos una foto.');
+  if(!$draft&&$count===0&&$existing===0) fail('Agrega al menos una foto.');
   $prepared=[];
   try {
     if($count>0) {
@@ -196,16 +201,16 @@ if(in_array($action,['create','update'],true) && $method==='POST') {
         $photoId=bin2hex(random_bytes(16));$filename=$photoId.'.jpg';if(!imagejpeg($image,$dataDir.'/photos/'.$filename,85))throw new RuntimeException('Cannot store image');chmod($dataDir.'/photos/'.$filename,0600);$prepared[]=['id'=>$photoId,'file'=>$filename];unset($image,$source);
       }
     }
-    $db->beginTransaction();$now=time();
+    $db->beginTransaction();$now=isset($old)?max(time(),(int)$old['updated']+1):time();if(isset($old)&&$old['status']==='draft'){if((int)query('SELECT updated FROM properties WHERE id=?',[$id])->fetchColumn()!==(int)$old['updated'])throw new InvalidArgumentException('El borrador cambió en otra ventana. Retómalo desde Mi cuenta.');}
     if($action==='create')query('INSERT INTO properties(id,user_id,title,operation,type,price,state,city,neighborhood,description,contact_type,contact,bedrooms,bathrooms,area,status,created,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[$id,$u['id'],$title,$op,$type,$price,$state,$city,$zone,$desc,$contactType,$contact,$beds,$baths,$area,$status,$now,$now]);
     else query('UPDATE properties SET title=?,operation=?,type=?,price=?,state=?,city=?,neighborhood=?,description=?,contact_type=?,contact=?,bedrooms=?,bathrooms=?,area=?,status=?,updated=? WHERE id=? AND user_id=?',[$title,$op,$type,$price,$state,$city,$zone,$desc,$contactType,$contact,$beds,$baths,$area,$status,$now,$id,$u['id']]);
     $oldPhotos=[];if(count($prepared)>0){$oldPhotos=query('SELECT file FROM photos WHERE property_id=?',[$id])->fetchAll(PDO::FETCH_COLUMN);query('DELETE FROM photos WHERE property_id=?',[$id]);foreach($prepared as $i=>$ph)query('INSERT INTO photos(id,property_id,file,position) VALUES(?,?,?,?)',[$ph['id'],$id,$ph['file'],$i]);}
     if($status==='active')confirmPropertyAvailability($id);
-    recordTerms((int)$u['id'],$action,$id);
+    if(!$draft)recordTerms((int)$u['id'],$action,$id);
     $db->commit();foreach($oldPhotos as $file)@unlink($dataDir.'/photos/'.$file);
   } catch(Throwable $e) {if($db->inTransaction())$db->rollBack();foreach($prepared as $ph)@unlink($dataDir.'/photos/'.$ph['file']);if($e instanceof InvalidArgumentException)fail($e->getMessage());throw $e;}
-  reply(['property'=>propertyData(selectProperty($id),true)],$action==='create'?201:200);
+  reply(['property'=>propertyData(selectProperty($id),true),'message'=>$draft?'Borrador guardado. Solo tú puedes verlo desde Mi cuenta.':'Publicación guardada correctamente.'],$action==='create'?201:200);
 }
-if($action==='status' && $method==='POST') {$u=requireUser();$id=strvalInput($input,'id',24,24);$status=choice($input,'status',['active','paused','rented','sold']);$p=selectProperty($id);if(!$p||(int)$p['user_id']!==(int)$u['id'])fail('Anuncio no disponible.',404);if($p['status']==='archived')fail('La publicación está archivada por administración.',403);validatePropertyOutcome($status,$p['operation']);if($status==='active'){requireVerified($u);requireTerms($input);}$db->beginTransaction();query('UPDATE properties SET status=?,updated=? WHERE id=?',[$status,time(),$id]);if($status==='active'){confirmPropertyAvailability($id);recordTerms((int)$u['id'],'reactivate',$id);}$db->commit();reply(['ok'=>true]);}
+if($action==='status' && $method==='POST') {$u=requireUser();$id=strvalInput($input,'id',24,24);$status=choice($input,'status',['active','paused','rented','sold']);$p=selectProperty($id);if(!$p||(int)$p['user_id']!==(int)$u['id'])fail('Anuncio no disponible.',404);if($p['status']==='draft')fail('Completa el borrador desde Mi cuenta para publicarlo.',409);if($p['status']==='archived')fail('La publicación está archivada por administración.',403);validatePropertyOutcome($status,$p['operation']);if($status==='active'){requireVerified($u);requireTerms($input);}$db->beginTransaction();query('UPDATE properties SET status=?,updated=? WHERE id=?',[$status,time(),$id]);if($status==='active'){confirmPropertyAvailability($id);recordTerms((int)$u['id'],'reactivate',$id);}$db->commit();reply(['ok'=>true]);}
 if($action==='report' && $method==='POST') {$u=requireUser();limitRate('report',10,3600);$id=strvalInput($input,'id',24,24);$reason=strvalInput($input,'reason',10,1000);$p=selectProperty($id);if(!$p||$p['status']!=='active')fail('Anuncio no disponible.',404);query('INSERT INTO reports(property_id,user_id,reason,created) VALUES(?,?,?,?) ON CONFLICT(property_id,user_id) DO UPDATE SET reason=excluded.reason,created=excluded.created,resolved_at=NULL',[$id,$u['id'],$reason,time()]);reply(['ok'=>true]);}
 fail('Operación no disponible.',404);
