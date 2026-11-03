@@ -10,9 +10,9 @@ consumeEmailFragment();
 window.addEventListener('hashchange',()=>{if(consumeEmailFragment())sessionReady.then(handleIncomingEmailLink).catch(e=>notify(e.message));});
 $('#year').textContent=new Date().getFullYear();
 function notify(message,type='info'){window.hogarFeedback.show(message,type);}
-function closeDialogs(){document.querySelectorAll('dialog[open]').forEach(d=>d.close());}
-function openDialog(id){closeDialogs();$(id).showModal();}
-async function api(action,body,query={}){const mutation=body!==undefined&&action!=='property-metric',restore=mutation?window.hogarFeedback.snapshot(window.hogarBusy.source()):()=>{},done=mutation?window.hogarBusy.begin():()=>{};try{const data=await apiRequest(action,body,query);if(mutation)window.hogarFeedback.success(action,data);return data;}catch(e){if(mutation){restore();window.hogarFeedback.show(e.message,'error');}throw e;}finally{restore.dispose?.();done();}}
+function closeDialogs(){const dialogs=[...document.querySelectorAll('dialog[open]')];if(!dialogs.every(d=>window.hogarUnsaved.allow(d)))return false;dialogs.forEach(d=>d.close());return true;}
+function openDialog(id){if(!closeDialogs())return false;$(id).showModal();return true;}
+async function api(action,body,query={}){const formSource=window.hogarBusy.source()||document.querySelector('dialog[open] form[aria-busy="true"]')||document.activeElement?.closest('form'),mutation=body!==undefined&&!['property-metric','community-read'].includes(action),restore=mutation?window.hogarFeedback.snapshot(window.hogarBusy.source()):()=>{},done=mutation?window.hogarBusy.begin():()=>{};try{const data=await apiRequest(action,body,query);if(mutation){window.hogarUnsaved.clean(formSource);window.hogarFeedback.success(action,data);}return data;}catch(e){if(mutation){restore();window.hogarFeedback.show(e.message,'error');}throw e;}finally{restore.dispose?.();done();}}
 async function apiRequest(action,body,query={}){
  const url=new URL('api.php',location.href);url.searchParams.set('action',action);for(const [k,v] of Object.entries(query))if(v!==''&&v!==undefined)url.searchParams.set(k,v);
  const options={credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}};if(action==='property-metric')options.keepalive=true;
@@ -24,7 +24,7 @@ async function apiRequest(action,body,query={}){
 function updateAccount(){$('#account-label').textContent=currentUser?'Mi cuenta':'Entrar / Registrarme';window.hogarCommunity?.syncSession();window.hogarFavorites?.syncSession();window.hogarSearches?.syncSession();}
 async function busy(form,fn,status){if(window.hogarBusy.locked(form))return;const before=window.hogarFeedback.revision(),restore=window.hogarFeedback.snapshot(form),done=window.hogarBusy.begin(form);delete status.dataset.kind;status.textContent='Un momento…';try{await fn();}catch(e){if(window.hogarFeedback.revision()===before){restore();status.textContent=e.message;status.dataset.kind='error';window.hogarFeedback.show(e.message,'error');}else{status.textContent='La acción se completó, pero no pudimos actualizar la vista. Actualiza para revisar el resultado.';window.hogarFeedback.show(status.textContent,'info');}}finally{restore.dispose?.();done();}}
 
-document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>window.hogarUnsaved.close(b.closest('dialog'))));
 
 
 function setAuthMode(next){
