@@ -28,5 +28,5 @@
  const form=document.querySelector('#publish-form');
  const editor=controller(form.elements.state,form.elements.city,form.elements.neighborhood,document.querySelector('#publish-location-status'),'listing',true);
  document.querySelector('#clear-location').addEventListener('click',()=>{search.setValues(null);loadProperties();});
- window.hogarLocations={attach:controller,setPublish:p=>editor.setValues(p)};
+ window.hogarLocations={setSearch:p=>search.setValues(p),attach:controller,setPublish:p=>editor.setValues(p)};
 })();
