@@ -113,3 +113,5 @@ Periodos de estadísticas: days=all/7/30 validado en servidor, días naturales C
 Gráfica diaria: series privadas del mismo rango CDMX y autorización de métricas. Ceros para días sin actividad. Todo el periodo desde el primer día con datos hasta hoy. Favoritos actuales agrupados por fecha created, sin reconstruir retirados. SVG local compartido stats-chart.js con leyenda, puntos con valores y tabla accesible, sin terceros ni descargas; admin serie global independiente de página.
 
 Comparación privada: periodos previos adyacentes de igual duración 7/30d CDMX; all sin comparación. Devuelve anterior, diferencia absoluta y porcentaje a1decimal. Base0/actual0=>0%; base0/actualpositivo=>null sin porcentaje. Admin global y filas por propiedad, dueño solo suyo. Advierte día actual incompleto y límites de registros previos/favoritos aún conservados.
+
+Acciones secundarias como botones blancos con borde, estados hover/active/focus/disabled y mínimo44px; grupos de acciones se adaptan a móvil. Modales con cierre44px. Sin emojis ni símbolos decorativos de texto en interfaz actual. Copias históricas de términos permanecen intactas.
