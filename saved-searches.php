@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS search_mail_queue(search_id TEXT NOT NULL REFERENCES 
 CREATE TABLE IF NOT EXISTS search_mail_limits(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,last_sent INTEGER NOT NULL DEFAULT 0,day_start INTEGER NOT NULL DEFAULT 0,day_count INTEGER NOT NULL DEFAULT 0);
 CREATE TRIGGER IF NOT EXISTS search_new_property AFTER INSERT ON properties WHEN NEW.status="active" BEGIN INSERT INTO property_publications(property_id,created) VALUES(NEW.id,CAST(strftime("%s","now") AS INTEGER));END;
 CREATE TRIGGER IF NOT EXISTS search_activated_property AFTER UPDATE OF status ON properties WHEN NEW.status="active" AND OLD.status<>"active" BEGIN INSERT INTO property_publications(property_id,created) VALUES(NEW.id,CAST(strftime("%s","now") AS INTEGER));END;');
+require_once __DIR__.'/search-history.php';
 function migrateSearchFrequency(): void {
  global $db;$columns=query('PRAGMA table_info(saved_searches)')->fetchAll(PDO::FETCH_COLUMN,1);if(in_array('frequency',$columns,true)&&in_array('delivery_after',$columns,true)&&in_array('last_notice',$columns,true))return;
  $db->exec('BEGIN IMMEDIATE');try{$columns=query('PRAGMA table_info(saved_searches)')->fetchAll(PDO::FETCH_COLUMN,1);foreach(['frequency'=>"TEXT NOT NULL DEFAULT 'immediate'",'delivery_after'=>'INTEGER NOT NULL DEFAULT 0','last_notice'=>'INTEGER NOT NULL DEFAULT 0'] as $name=>$definition)if(!in_array($name,$columns,true))$db->exec('ALTER TABLE saved_searches ADD COLUMN '.$name.' '.$definition);$db->exec('COMMIT');}catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');throw $e;}
@@ -56,6 +57,7 @@ function searchNextNotice(array $search,?int $now=null): array {
 }
 function handleSavedSearches(string $action,string $method,array $input): void {
  if(!str_starts_with($action,'saved-search-'))return;
+ if($action==='saved-search-history'){handleSearchHistory($method);return;}
  global $db;$u=requireUser();$uid=(int)$u['id'];
  if($action==='saved-search-list'&&$method==='GET'){$items=[];foreach(query('SELECT * FROM saved_searches WHERE user_id=? ORDER BY created DESC,id',[$uid])->fetchAll() as $row){$meta=searchNextNotice($row);unset($row['user_id'],$row['cursor'],$row['delivery_after'],$row['last_notice']);$items[]=$row+$meta;}reply(['items'=>$items]);}
  if($method!=='POST')fail('Método no permitido.',405);
@@ -117,7 +119,7 @@ function flushSearchMail(): array {
   $items=[];foreach($eligible as $p){if(count($items)>=20&&!isset($items[$p['property_id']]))continue;$items[$p['property_id']]=$p;}
   try{$ok=deliverSearchMail($u['email'],array_values($items));}catch(Throwable $e){$ok=false;}
   $notifiedSearches=[];foreach($eligible as $p){if(!isset($items[$p['property_id']]))continue;if($ok){query('DELETE FROM search_mail_queue WHERE search_id=? AND property_id=?',[$p['search_id'],$p['property_id']]);$notifiedSearches[$p['search_id']]=$p;}else query('UPDATE search_mail_queue SET attempts=attempts+1,next_attempt=? WHERE search_id=? AND property_id=?',[$now+min(21600,300*(2**min(6,(int)$p['attempts']))),$p['search_id'],$p['property_id']]);}
-  if($ok){foreach($notifiedSearches as $searchId=>$schedule)query('UPDATE saved_searches SET last_notice=?,delivery_after=? WHERE id=?',[$now,searchNextSlot($schedule,$now),$searchId]);$newDay=(int)$pref['day_start']<=$now-86400;query('UPDATE search_mail_limits SET last_sent=?,day_start=?,day_count=? WHERE user_id=?',[$now,$newDay?$now:$pref['day_start'],$newDay?1:(int)$pref['day_count']+1,$uid]);$stats['sent']++;}else{$stats['failed']++;}$db->exec('COMMIT');
+  if($ok){recordSearchHistory((int)$uid,$now,$eligible,array_keys($items));foreach($notifiedSearches as $searchId=>$schedule)query('UPDATE saved_searches SET last_notice=?,delivery_after=? WHERE id=?',[$now,searchNextSlot($schedule,$now),$searchId]);$newDay=(int)$pref['day_start']<=$now-86400;query('UPDATE search_mail_limits SET last_sent=?,day_start=?,day_count=? WHERE user_id=?',[$now,$newDay?$now:$pref['day_start'],$newDay?1:(int)$pref['day_count']+1,$uid]);$stats['sent']++;}else{$stats['failed']++;}$db->exec('COMMIT');
  }catch(Throwable $e){if($db->inTransaction())$db->exec('ROLLBACK');throw $e;}}
  return $stats;
 }
