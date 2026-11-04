@@ -11,7 +11,7 @@ Las propiedades rentadas o vendidas liberan un espacio. Si una suscripción term
 
 ## Estado de la conexión
 
-El código admite Checkout de Stripe alojado, el portal de facturación y webhooks con firma e idempotencia. Los tres productos y sus precios recurrentes ya están creados en el modo de prueba de la cuenta de Hogar Por Favor. Aún se requieren la clave secreta de prueba y configurar el endpoint de webhook para habilitar Checkout. No se incluyen secretos en este repositorio.
+El código admite Checkout de Stripe alojado, el portal de facturación y webhooks con firma e idempotencia. Los tres productos y sus precios recurrentes ya están creados en modo de prueba y live. Aún se requieren las claves privadas y los secretos de webhook correspondientes en Hostinger para habilitar Checkout. No se incluyen secretos en este repositorio.
 
 Productos creados en Stripe, con entornos separados (precios mensuales en MXN):
 
