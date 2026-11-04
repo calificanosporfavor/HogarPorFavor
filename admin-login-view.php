@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow,noarchive">
   <title>Acceso de administración | Hogar Por Favor</title>
-  <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png?v=3">
+  <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png?v=4">
   <link rel="stylesheet" href="/style.css?v=32"><link rel="stylesheet" href="/admin.css?v=5">
   <script src="/admin-login.js?v=1" defer></script>
 </head>
