@@ -1,0 +1,26 @@
+<?php
+declare(strict_types=1);
+ini_set('display_errors','0');umask(0077);header('Cache-Control: no-store');header('X-Content-Type-Options: nosniff');
+if($_SERVER['REQUEST_METHOD']!=='POST'){http_response_code(405);exit;}
+$documentRoot=rtrim((string)($_SERVER['DOCUMENT_ROOT']??__DIR__),'/\\');$dataDir=PHP_SAPI==='cli-server'?dirname(__DIR__).'/hogar-test-data':dirname($documentRoot).'/.hogar-private';$configPath=$dataDir.'/stripe-config.php';
+if(!is_file($configPath)){http_response_code(503);exit;}$cfg=require $configPath;if(!is_array($cfg)||!in_array(($cfg['mode']??''),['test','live'],true)||empty($cfg['billing_enabled'])){http_response_code(503);exit;}$expectedPrefix=($cfg['mode']==='live')?'sk_live_':'sk_test_';if(!str_starts_with((string)($cfg['secret_key']??''),$expectedPrefix)){http_response_code(503);exit;}
+$secret=(string)($cfg['webhook_secret']??getenv('HOGAR_STRIPE_WEBHOOK_SECRET')?:'');if(!preg_match('/^whsec_[A-Za-z0-9_]+$/',$secret)){http_response_code(503);exit;}
+$raw=file_get_contents('php://input');$header=(string)($_SERVER['HTTP_STRIPE_SIGNATURE']??'');$parts=[];foreach(explode(',',$header) as $piece){$pair=explode('=',$piece,2);if(count($pair)===2)$parts[$pair[0]][]=$pair[1];}$timestamp=(int)($parts['t'][0]??0);$signatures=$parts['v1']??[];$expectedSignature=hash_hmac('sha256',$timestamp.'.'.$raw,$secret);$validSignature=false;foreach($signatures as $candidate)if(preg_match('/^[a-f0-9]{64}$/',$candidate)&&hash_equals($expectedSignature,$candidate))$validSignature=true;if($timestamp<time()-300||$timestamp>time()+300||!$validSignature){http_response_code(400);exit;}
+$event=json_decode($raw,true);if(!is_array($event)||!preg_match('/^evt_[A-Za-z0-9]+$/',(string)($event['id']??''))){http_response_code(400);exit;}
+try{
+ $db=new PDO('sqlite:'.$dataDir.'/hogar.sqlite',null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);$db->exec('PRAGMA foreign_keys=ON;PRAGMA busy_timeout=5000;CREATE TABLE IF NOT EXISTS stripe_webhook_events(event_id TEXT PRIMARY KEY,received_at INTEGER NOT NULL);');define('HOGAR_INTERNAL',true);require __DIR__.'/stripe-billing.php';
+ $db->beginTransaction();$insert=$db->prepare('INSERT OR IGNORE INTO stripe_webhook_events(event_id,received_at) VALUES(?,?)');$insert->execute([$event['id'],time()]);if($insert->rowCount()===0){$db->commit();http_response_code(200);echo 'ok';exit;}
+ $type=(string)($event['type']??'');$object=$event['data']['object']??[];$meta=$object['metadata']??[];$userId=(int)($meta['user_id']??$object['client_reference_id']??0);$plan=(string)($meta['plan']??'');$customer=(string)($object['customer']??'');$subId='';$status='';$periodEnd=0;$cancel=0;$priceId='';
+ if(str_starts_with($type,'customer.subscription.')&&is_array($object)){$userId=(int)($meta['user_id']??0);$plan=(string)($meta['plan']??'');$subId=(string)($object['id']??'');$status=(string)($object['status']??'');$periodEnd=(int)($object['current_period_end']??0);$cancel=!empty($object['cancel_at_period_end'])?1:0;$priceId=(string)($object['items']['data'][0]['price']['id']??'');}
+ if($type==='checkout.session.completed'){
+  if($userId>0&&$customer!==''){$st=$db->prepare('UPDATE users SET billing_customer_id=COALESCE(billing_customer_id,?) WHERE id=?');$st->execute([$customer,$userId]);}
+ }
+ if(str_starts_with($type,'customer.subscription.')&&$userId>0){
+  $plan='';foreach(['advisor','advisor_plus','advisor_unlimited'] as $configuredPlan)if(!empty($cfg['price_ids'][$configuredPlan])&&hash_equals((string)$cfg['price_ids'][$configuredPlan],$priceId)){$plan=$configuredPlan;break;}
+  if($plan==='')throw new RuntimeException('Subscription price does not match configured plans');
+  $effective=in_array($status,['active','trialing','past_due','canceled','unpaid','incomplete_expired'],true)?$status:'incomplete';$savedPlan=in_array($status,['canceled','unpaid','incomplete_expired'],true)?'basic':$plan;$end=in_array($status,['canceled','unpaid','incomplete_expired'],true)?0:$periodEnd;
+  $eventCreated=(int)($event['created']??time());$check=$db->prepare('SELECT billing_event_created FROM users WHERE id=?');$check->execute([$userId]);$latest=(int)($check->fetchColumn()?:0);if($eventCreated>=$latest){$st=$db->prepare('UPDATE users SET billing_plan=?,billing_status=?,billing_customer_id=COALESCE(?,billing_customer_id),billing_subscription_id=?,billing_current_period_end=?,billing_cancel_at_period_end=?,billing_event_created=? WHERE id=?');$st->execute([$savedPlan,$effective,$customer?:null,$subId,$end,$cancel,$eventCreated,$userId]);}
+ }
+ if($type==='invoice.paid'||$type==='invoice.payment_failed'){$sub=(string)($object['subscription']??$object['parent']['subscription_details']['subscription']??'');if($sub!==''){$eventCreated=(int)($event['created']??time());$st=$db->prepare('UPDATE users SET billing_status=?,billing_event_created=? WHERE billing_subscription_id=? AND billing_event_created<=?');$st->execute([$type==='invoice.paid'?'active':'past_due',$eventCreated,$sub,$eventCreated]);}}
+ $db->commit();http_response_code(200);echo 'ok';
+}catch(Throwable $e){if(isset($db)&&$db->inTransaction())$db->rollBack();error_log('Hogar Stripe webhook: '.$e->getMessage());http_response_code(500);}
