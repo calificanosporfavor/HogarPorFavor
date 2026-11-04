@@ -8,7 +8,7 @@ header('X-Content-Type-Options: nosniff');
 function sitemapEscape(string $value): string {
     return htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
 }
-$urls = [['loc' => 'https://hogarporfavor.com/', 'lastmod' => null, 'priority' => '1.0']];
+$urls = [['loc' => 'https://hogarporfavor.com/', 'lastmod' => null, 'priority' => '1.0'], ['loc' => 'https://hogarporfavor.com/planes.html', 'lastmod' => null, 'priority' => '0.8']];
 $documentRoot = rtrim((string)($_SERVER['DOCUMENT_ROOT'] ?? __DIR__), '/\\');
 $dataDir = PHP_SAPI === 'cli-server' ? dirname(__DIR__) . '/hogar-test-data' : dirname($documentRoot) . '/.hogar-private';
 $realData = realpath($dataDir);

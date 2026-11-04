@@ -48,6 +48,7 @@ function setAuthMode(next){
 document.querySelectorAll('[data-auth]').forEach(b=>b.addEventListener('click',()=>setAuthMode(b.dataset.auth)));
 async function needAuth(callback){try{await sessionReady;if(currentUser)return callback();afterAuth=callback;setAuthMode('login');openDialog('#auth-dialog');}catch(e){notify(e.message);}}
 $('#account-open').addEventListener('click',()=>needAuth(showAccount));
+if(new URLSearchParams(location.search).get('auth')==='register'){$('#account-open').click();document.querySelector('[data-auth="register"]')?.click();}
 auth.addEventListener('submit',e=>{e.preventDefault();busy(auth,async()=>{
  const values=Object.fromEntries(new FormData(auth));values.privacy=auth.elements.privacy.checked;values.terms=auth.elements.terms.checked;
  if(authMode==='forgot'){const data=await api('forgot-password',{email:values.email});setAuthMode('code-reset');auth.elements.email.value=values.email;$('#auth-status').textContent=data.message;auth.elements.code.focus();return;}
