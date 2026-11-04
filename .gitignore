@@ -1,0 +1,5 @@
+.hogar-private/
+stripe-config.php
+*.sqlite
+*.sqlite-*
+

@@ -14,3 +14,6 @@ RewriteEngine On
 RewriteRule ^sitemap\.xml$ sitemap.php [L]
 RewriteRule ^prop/([a-f0-9]{24})(?:/[^/]*)?/?$ property-page.php?id=$1 [L,QSA]
 RewriteRule ^admin\.html$ admin.php [L]
+<Files "stripe-config.php">
+Require all denied
+</Files>
