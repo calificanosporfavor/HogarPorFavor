@@ -16,6 +16,10 @@ En producción, los datos persisten en .hogar-private al lado de public_html, fu
 
 Protecciones: autorización por propietario, consultas preparadas, cookies HttpOnly/Secure/SameSite, CSRF, límites por IP, regeneración y caducidad de sesión, revocación de sesiones al recuperar acceso, salida de texto escapada y validación de imagen en servidor. Los registros de límite usan IP resumida con hash y caducan. No se guardan contraseñas o códigos en texto plano.
 
+## Fichas públicas y buscadores
+
+Las fichas `/prop/{id}` muestran cada anuncio activo en HTML inicial con título, precio, ubicación, fotos, metadatos para compartir y datos estructurados; borradores, pausados, retirados y cuentas suspendidas no se exponen. El enlace canónico no incluye contacto en metadatos y solo ofrece el contacto que el dueño autorizó como público en el anuncio. Los listados incluyen un enlace rastreable a su ficha. `sitemap.xml` se genera desde SQLite e incorpora solo propiedades activas de cuentas activas con correo confirmado; se almacena en caché hasta 5 minutos. `.htaccess` enruta las fichas y el sitemap a PHP. Mantener ambos archivos, `property-page.php`, `sitemap.php` y la base privada fuera del repositorio/directorio público salvo el código.
+
 ## Publicación en Hostinger
 
 Hostinger despliega main a public_html automáticamente. Conservar api.php, auth-mail.php, .user.ini y .htaccess junto con index.html y los recursos. .user.ini configura 6 MB por foto y 52 MB por petición; sus cambios pueden tardar en aplicarse. No subir respaldos ni credenciales. api.php?action=health confirma disponibilidad sin exponer rutas ni configuración sensible.

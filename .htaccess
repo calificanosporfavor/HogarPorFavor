@@ -11,4 +11,6 @@ Header always set X-Frame-Options "SAMEORIGIN"
 </IfModule>
 
 RewriteEngine On
+RewriteRule ^sitemap\.xml$ sitemap.php [L]
+RewriteRule ^prop/([a-f0-9]{24})(?:/[^/]*)?/?$ property-page.php?id=$1 [L,QSA]
 RewriteRule ^admin\.html$ admin.php [L]
