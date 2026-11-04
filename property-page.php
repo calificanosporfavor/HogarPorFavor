@@ -105,7 +105,7 @@ header('Content-Type: text/html; charset=utf-8');
   <meta name="description" content="<?= propertyPageEscape($metaDescription) ?>">
   <meta name="robots" content="index,follow,max-image-preview:large">
   <meta name="theme-color" content="#8DDA07">
-  <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png?v=4">
+  <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png?v=5">
   <link rel="canonical" href="<?= propertyPageEscape($canonical) ?>">
   <meta property="og:type" content="article"><meta property="og:site_name" content="Hogar Por Favor">
   <meta property="og:title" content="<?= propertyPageEscape($metaTitle) ?>"><meta property="og:description" content="<?= propertyPageEscape($metaDescription) ?>">
