@@ -81,8 +81,9 @@ if ($method==='POST') {
 } elseif ($method!=='GET') fail('Método no permitido.',405);
 if(defined('HOGAR_ADMIN_PAGE')) {
  header('Content-Type: text/html; charset=utf-8'); header('X-Robots-Tag: noindex, nofollow, noarchive');
- if($method!=='GET'||!isSuperadmin()){http_response_code(404);echo '<!doctype html><html lang="es"><meta charset="utf-8"><title>No encontrado</title><h1>Página no encontrada.</h1></html>';exit;}
- require __DIR__.'/admin-view.php';exit;
+ if($method!=='GET'){http_response_code(404);echo '<!doctype html><html lang="es"><meta charset="utf-8"><title>No encontrado</title><h1>Página no encontrada.</h1></html>';exit;}
+ if(isSuperadmin())require __DIR__.'/admin-view.php';else require __DIR__.'/admin-login-view.php';
+ exit;
 }
 handleSavedSearches($action,$method,$input??[]);
 handleFavoritesMail($action,$method,$input??[]);
@@ -122,11 +123,23 @@ if ($action==='register' && $method==='POST') {
 if ($action==='login' && $method==='POST') {
   limitRate('login',20,900); $email=strtolower(strvalInput($input,'email',5,254)); $password=strvalInput($input,'password',1,72);
   $u=query('SELECT * FROM users WHERE email=?',[$email])->fetch();
-  $dummy='$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.';
+  $dummy='$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.at2uheWG/igi.';
   if(!password_verify($password,$u['password']??$dummy)||!$u) fail('Correo o contraseña incorrectos.',401);
   if($u['status']!=='active')fail('Esta cuenta está suspendida. Contacta a la administración.',403);
   $_SESSION['issued']=microtime(true);
   rotateSession(); $_SESSION['uid']=(int)$u['id']; $_SESSION['auth']=hash('sha256',$u['password']); $_SESSION['csrf']=bin2hex(random_bytes(32)); rememberLoginDevice($u,true); reply(['user'=>user(),'csrf'=>$_SESSION['csrf']]);
+}
+if ($action==='admin-login' && $method==='POST') {
+  limitRate('login',20,900); $email=strtolower(strvalInput($input,'email',5,254)); $password=strvalInput($input,'password',1,72);
+  $u=$email===HOGAR_SUPERADMIN?query('SELECT * FROM users WHERE email=?',[$email])->fetch():false;
+  $dummy='$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.at2uheWG/igi.';
+  $validPassword=password_verify($password,is_array($u)?(string)$u['password']:$dummy);
+  if(!$u||!$validPassword)fail('Correo o contraseña incorrectos.',401);
+  if($u['status']!=='active')fail('La cuenta de administración no está disponible. Contacta al soporte del sitio.',403);
+  if($u['email_verified_at']===null)fail('Confirma primero el correo de la cuenta de administración desde la página principal.',403);
+  $_SESSION['issued']=microtime(true);
+  rotateSession(); $_SESSION['uid']=(int)$u['id']; $_SESSION['auth']=hash('sha256',$u['password']); $_SESSION['csrf']=bin2hex(random_bytes(32)); rememberLoginDevice($u,true);
+  reply(['user'=>user(),'csrf'=>$_SESSION['csrf']]);
 }
 if ($action==='recover' && $method==='POST') {
   limitRate('recover',8,3600); $email=strtolower(strvalInput($input,'email',5,254)); $code=strvalInput($input,'code',32,32); $password=strvalInput($input,'password',12,72);
