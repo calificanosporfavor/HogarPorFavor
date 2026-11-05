@@ -187,7 +187,6 @@ $('#sessions-list').addEventListener('click',async e=>{
  try{const r=await api('logout-session',{session_id:confirm.dataset.sessionConfirmId,confirm:true});if(r.closed_current)await finishSessionLogout(r.message);else{await loadSessions();notify(r.message);}}
  catch(err){status.textContent=err.message;confirm.disabled=false;}
 });
-+({advisor:99,advisor_plus:199,advisor_unlimited:299}[plan])+' MXN al mes). Después aceptarás las condiciones y revisarás el pago en Stripe.';return;}await continueToBillingPlan(plan);}
 $('#account-open').addEventListener('click',()=>needAuth(showAccount));
 document.querySelectorAll('[data-open-profile]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();needAuth(showAccount);}));
 document.querySelectorAll('[data-profile-jump]').forEach(b=>b.addEventListener('click',()=>document.getElementById(b.dataset.profileJump)?.scrollIntoView({behavior:'smooth',block:'start'})));
