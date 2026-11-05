@@ -24,7 +24,7 @@ function handleAccountDeletion(string $action,string $method,array $input): void
  $db->exec('PRAGMA secure_delete=ON');
  $db->exec('BEGIN IMMEDIATE');
  try{
-  $photos=query('SELECT ph.file FROM photos ph JOIN properties p ON p.id=ph.property_id WHERE p.user_id=?',[$u['id']])->fetchAll(PDO::FETCH_COLUMN);
+  $photos=query('SELECT ph.file FROM photos ph JOIN properties p ON p.id=ph.property_id WHERE p.user_id=?',[$u['id']])->fetchAll(PDO::FETCH_COLUMN);$avatars=query('SELECT avatar_file FROM community_profiles WHERE user_id=? AND avatar_file IS NOT NULL',[$u['id']])->fetchAll(PDO::FETCH_COLUMN);$photos=array_merge($photos,$avatars);
   if($photos&&!mkdir($stage,0700))throw new RuntimeException('Deletion staging unavailable');
   foreach($photos as $file){if(!preg_match('/^[a-f0-9]{32}\.jpg$/D',$file))throw new RuntimeException('Invalid stored photo name');$from=$dataDir.'/photos/'.$file;if(!is_file($from))continue;if(!rename($from,$stage.'/'.$file))throw new RuntimeException('Cannot stage photo deletion');$staged[]=$file;}
   query('DELETE FROM admin_audit WHERE actor_id=? OR (action LIKE "user_%" AND target=?) OR (action LIKE "property_%" AND target IN (SELECT id FROM properties WHERE user_id=?)) OR (action LIKE "report_%" AND target IN (SELECT CAST(id AS TEXT) FROM reports WHERE user_id=? OR property_id IN (SELECT id FROM properties WHERE user_id=?)))',[$u['id'],(string)$u['id'],$u['id'],$u['id'],$u['id']]);
