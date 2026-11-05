@@ -5,15 +5,15 @@ if(!defined('HOGAR_INTERNAL')){http_response_code(404);exit;}
 const HOGAR_BILLING_PLANS = [
  'basic'=>['name'=>'Gratis','limit'=>3,'amount'=>0],
  'advisor'=>['name'=>'Asesor','limit'=>10,'amount'=>99],
- 'advisor_plus'=>['name'=>'Asesor Plus','limit'=>25,'amount'=>200],
- 'advisor_unlimited'=>['name'=>'Ilimitado','limit'=>PHP_INT_MAX,'amount'=>300,'features_per_month'=>4],
+ 'advisor_plus'=>['name'=>'Asesor Plus','limit'=>25,'amount'=>199],
+ 'advisor_unlimited'=>['name'=>'Ilimitado','limit'=>PHP_INT_MAX,'amount'=>299,'features_per_month'=>4],
 ];
 $billingColumns=['billing_plan TEXT NOT NULL DEFAULT "basic"','billing_status TEXT NOT NULL DEFAULT "none"','billing_customer_id TEXT','billing_subscription_id TEXT','billing_current_period_end INTEGER NOT NULL DEFAULT 0','billing_cancel_at_period_end INTEGER NOT NULL DEFAULT 0','billing_event_created INTEGER NOT NULL DEFAULT 0'];
 foreach($billingColumns as $column){try{$db->exec('ALTER TABLE users ADD COLUMN '.$column);}catch(PDOException $e){if(!str_contains(strtolower($e->getMessage()),'duplicate column'))throw $e;}}
 
 $db->exec('CREATE UNIQUE INDEX IF NOT EXISTS users_billing_customer ON users(billing_customer_id) WHERE billing_customer_id IS NOT NULL; CREATE UNIQUE INDEX IF NOT EXISTS users_billing_subscription ON users(billing_subscription_id) WHERE billing_subscription_id IS NOT NULL;');
 $db->exec('CREATE TABLE IF NOT EXISTS billing_acceptances(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,plan TEXT NOT NULL,version TEXT NOT NULL,document_sha256 TEXT NOT NULL,accepted_at INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS billing_feature_claims(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,month_key TEXT NOT NULL,starts_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,UNIQUE(user_id,property_id,month_key));CREATE INDEX IF NOT EXISTS billing_feature_month ON billing_feature_claims(user_id,month_key);CREATE INDEX IF NOT EXISTS billing_feature_active ON billing_feature_claims(property_id,expires_at);');
-const HOGAR_BILLING_TERMS_VERSION='2026-11-04.2';
+const HOGAR_BILLING_TERMS_VERSION='2026-11-04.3';
 function recordBillingTerms(int $userId,string $plan): void {$hash=hash_file('sha256',__DIR__.'/suscripciones.html');if(!$hash)throw new RuntimeException('Subscription terms unavailable');query('INSERT INTO billing_acceptances(user_id,plan,version,document_sha256,accepted_at) VALUES(?,?,?,?,?)',[$userId,$plan,HOGAR_BILLING_TERMS_VERSION,$hash,time()]);}
 
 function stripeBillingConfig(): array {
@@ -53,7 +53,7 @@ function billingPropertyLimit(?array $u): int {
 }
 function billingLimitMessage(?array $u): string {
  $plan=billingEffectivePlan($u);$limit=billingPropertyLimit($u);
- if($plan==='superadmin')return 'El acceso superadmin no amplía el límite de publicación: esta cuenta puede ocupar hasta 3 espacios. Archiva o elimina una propiedad antes de publicar otra.';if($plan==='basic')return 'Tu cuenta gratis incluye de 1 a 3 publicaciones. Puedes ampliar a 10 por $99 al mes, hasta 25 con estadísticas por $200 o publicar sin límite por $300 al mes con 4 espacios destacados de 7 días cada mes.';
+ if($plan==='superadmin')return 'El acceso superadmin no amplía el límite de publicación: esta cuenta puede ocupar hasta 3 espacios. Archiva o elimina una propiedad antes de publicar otra.';if($plan==='basic')return 'Tu cuenta gratis incluye de 1 a 3 publicaciones. Puedes ampliar a 10 por $99 al mes, hasta 25 con estadísticas por $199 o publicar sin límite por $299 al mes con 4 espacios destacados de 7 días cada mes.';
  return 'Tu plan incluye hasta '.$limit.' propiedades activas, pausadas o en borrador. Libera un espacio marcando una como rentada o vendida, o revisa las opciones de tu plan en Mi cuenta.';
 }
 function billingHasAnalytics(?array $u): bool { return in_array(billingEffectivePlan($u),['advisor_plus','advisor_unlimited','superadmin'],true); }
@@ -83,7 +83,8 @@ function handleStripeBilling(string $action,string $method,array $input): void {
   $existing=query('SELECT billing_customer_id,billing_subscription_id,billing_status,billing_current_period_end FROM users WHERE id=?',[$u['id']])->fetch();
   if(in_array($existing['billing_status'],['active','trialing','past_due'],true)&&(int)$existing['billing_current_period_end']>time())fail('Ya tienes un plan activo. Adminístralo desde Mi cuenta.',409);
   limitRate('billing-checkout',5,3600);$base='https://hogarporfavor.com';
-  $form=['mode'=>'subscription','success_url'=>$base.'/?billing=success&session_id={CHECKOUT_SESSION_ID}','cancel_url'=>$base.'/?billing=cancel','client_reference_id'=>(string)$u['id'],'line_items[0][price]'=>$price,'line_items[0][quantity]'=>'1','metadata[user_id]'=>(string)$u['id'],'metadata[plan]'=>$plan,'subscription_data[metadata][user_id]'=>(string)$u['id'],'subscription_data[metadata][plan]'=>$plan,'allow_promotion_codes'=>'false'];
+  $integrationSuffix='';$integrationAlphabet='abcdefghijklmnopqrstuvwxyz';for($i=0;$i<8;$i++)$integrationSuffix.=$integrationAlphabet[random_int(0,25)];
+  $form=['integration_identifier'=>'hogarporfavor_'.$plan.'_'.$integrationSuffix,'mode'=>'subscription','success_url'=>$base.'/?billing=success&session_id={CHECKOUT_SESSION_ID}','cancel_url'=>$base.'/?billing=cancel','client_reference_id'=>(string)$u['id'],'line_items[0][price]'=>$price,'line_items[0][quantity]'=>'1','metadata[user_id]'=>(string)$u['id'],'metadata[plan]'=>$plan,'subscription_data[metadata][user_id]'=>(string)$u['id'],'subscription_data[metadata][plan]'=>$plan,'allow_promotion_codes'=>'false'];
   if(!empty($existing['billing_customer_id']))$form['customer']=$existing['billing_customer_id'];else $form['customer_email']=$u['email'];
   $session=billingHttpRequest('https://api.stripe.com/v1/checkout/sessions',$form,$config['secret_key']);
   if(empty($session['url'])||!str_starts_with((string)$session['url'],'https://checkout.stripe.com/'))fail('Stripe no devolvió una página segura de pago.',502);
