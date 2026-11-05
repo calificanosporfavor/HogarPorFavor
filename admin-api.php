@@ -73,8 +73,8 @@ function handleAdminAction(string $action,string $method,array $input): void {
   try{
    $p=query('SELECT p.id,p.user_id,p.status AS property_status,u.email,u.status AS owner_status,u.email_verified_at FROM properties p JOIN users u ON u.id=p.user_id WHERE p.id=?',[$id])->fetch();
    if(!$p||$p['property_status']==='draft'){$db->rollBack();fail('Publicación no encontrada.',404);}
+   if($status==='active'&&($p['owner_status']!=='active'||$p['email_verified_at']===null)){$db->rollBack();fail('Para publicar, la cuenta propietaria debe estar activa y tener el correo confirmado.');}
    if(in_array($status,['active','paused'],true)&&in_array($p['property_status'],['archived','rented','sold'],true)){
-    if($status==='active'&&($p['owner_status']!=='active'||$p['email_verified_at']===null)){$db->rollBack();fail('Para publicar, la cuenta propietaria debe estar activa y tener el correo confirmado.');}
     $account=['id'=>(int)$p['user_id'],'email'=>$p['email'],'email_verified'=>!empty($p['email_verified_at'])];$limit=billingPropertyLimit($account);
     $occupied=(int)query('SELECT COUNT(*) FROM properties WHERE user_id=? AND status IN ("active","paused","draft")',[$p['user_id']])->fetchColumn();
     if($limit!==PHP_INT_MAX&&$occupied>=$limit){$db->rollBack();fail('La cuenta propietaria ya ocupa todos los espacios de su plan. Actualiza el plan o retira otra publicación antes de restaurar esta.',409);}
