@@ -52,7 +52,17 @@ async function continueToBillingPlan(plan){
  if(!currentUser?.email_verified){afterAuth=()=>continueToBillingPlan(plan);showEmailPending('Confirma tu correo antes de suscribirte.');return;}
  location.assign('/planes.html?subscribe='+encodeURIComponent(plan));
 }
-async function beginBillingPlan(plan){if(!BILLING_PLAN_KEYS.includes(plan))return;await sessionReady;if(!currentUser){afterAuth=()=>continueToBillingPlan(plan);setAuthMode('login');openDialog('#auth-dialog');$('#auth-status').textContent='Inicia sesión o crea una cuenta para suscribirte a '+({advisor:'Asesor',advisor_plus:'Asesor Plus',advisor_unlimited:'Ilimitado'}[plan])+' (
+async function beginBillingPlan(plan){
+ if(!BILLING_PLAN_KEYS.includes(plan))return;
+ await sessionReady;
+ if(!currentUser){
+  afterAuth=()=>continueToBillingPlan(plan);setAuthMode('login');openDialog('#auth-dialog');
+  const names={advisor:'Asesor',advisor_plus:'Asesor Plus',advisor_unlimited:'Ilimitado'};
+  $('#auth-status').textContent='Inicia sesión o crea una cuenta para continuar con el plan '+names[plan]+'. Después confirmarás las condiciones y el pago en Stripe.';
+  return;
+ }
+ await continueToBillingPlan(plan);
+}
 $('#account-open').addEventListener('click',()=>needAuth(showAccount));
 document.querySelectorAll('[data-open-profile]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();needAuth(showAccount);}));
 document.querySelectorAll('[data-profile-jump]').forEach(b=>b.addEventListener('click',()=>document.getElementById(b.dataset.profileJump)?.scrollIntoView({behavior:'smooth',block:'start'})));
