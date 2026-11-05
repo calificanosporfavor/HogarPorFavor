@@ -36,10 +36,10 @@ function handleAdminAction(string $action,string $method,array $input): void {
    if($status==='past_due'&&$end+7*86400>$now)$pastDue++;
    if(!empty($row['billing_cancel_at_period_end'])&&$end>$now)$canceling++;
   }
-  $cfg=stripeBillingConfig();$webhookReady=preg_match('/^whsec_[A-Za-z0-9_]+$/',(string)($cfg['webhook_secret']??''))===1;
+  $cfg=stripeBillingConfig();$webhookReady=preg_match('/^whsec_[A-Za-z0-9_]+$/',(string)($cfg['webhook_secret']??''))===1;$pricesReady=true;foreach(['advisor','advisor_plus','advisor_unlimited'] as $pricePlan)$pricesReady=$pricesReady&&preg_match('/^price_[A-Za-z0-9]+$/',(string)($cfg['price_ids'][$pricePlan]??''))===1;
   $lastWebhook=null;if(query('SELECT 1 FROM sqlite_master WHERE type="table" AND name="stripe_webhook_events"')->fetchColumn())$lastWebhook=(int)(query('SELECT MAX(received_at) FROM stripe_webhook_events')->fetchColumn()?:0)?:null;
   $distribution=[];foreach(['basic','advisor','advisor_plus','advisor_unlimited','superadmin'] as $key){$definition=$key==='superadmin'?['name'=>'Superadmin','limit'=>3,'amount'=>0]:(HOGAR_BILLING_PLANS[$key]??[]);$distribution[]=['plan'=>$key,'name'=>$definition['name']??$key,'limit'=>$key==='advisor_unlimited'?null:($definition['limit']??3),'amount'=>(int)($definition['amount']??0),'users'=>$counts[$key]??0];}
-  reply(['users'=>count($users),'plans'=>$distribution,'active_subscriptions'=>$active,'trialing_subscriptions'=>$trialing,'past_due_subscriptions'=>$pastDue,'canceling_subscriptions'=>$canceling,'estimated_mrr'=>$mrr,'basic_over_limit'=>$overLimit,'billing_enabled'=>!empty($cfg['billing_enabled'])&&stripeModeMatchesKey($cfg)&&$webhookReady,'last_webhook_at'=>$lastWebhook]);
+  reply(['users'=>count($users),'plans'=>$distribution,'active_subscriptions'=>$active,'trialing_subscriptions'=>$trialing,'past_due_subscriptions'=>$pastDue,'canceling_subscriptions'=>$canceling,'estimated_mrr'=>$mrr,'basic_over_limit'=>$overLimit,'billing_enabled'=>!empty($cfg['billing_enabled'])&&stripeModeMatchesKey($cfg)&&$webhookReady&&$pricesReady,'last_webhook_at'=>$lastWebhook]);
  }
  if($action==='admin-users'&&$method==='GET'){
   $q=adminSearch();$page=max(1,(int)($_GET['page']??1));$where='1=1';$args=[];if($q!==''){$where='(instr(lower(name),lower(?))>0 OR instr(lower(email),lower(?))>0)';$args=[$q,$q];}
