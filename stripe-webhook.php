@@ -13,7 +13,7 @@ try{
  $db->beginTransaction();$insert=$db->prepare('INSERT OR IGNORE INTO stripe_webhook_events(event_id,received_at) VALUES(?,?)');$insert->execute([$event['id'],time()]);if($insert->rowCount()===0){$db->commit();http_response_code(200);echo 'ok';exit;}
  $type=(string)($event['type']??'');$object=$event['data']['object']??[];$meta=$object['metadata']??[];$userId=(int)($meta['user_id']??$object['client_reference_id']??0);$plan=(string)($meta['plan']??'');$customer=(string)($object['customer']??'');$subId='';$status='';$periodEnd=0;$cancel=0;$priceId='';
  if(str_starts_with($type,'customer.subscription.')&&is_array($object)){$userId=(int)($meta['user_id']??0);$plan=(string)($meta['plan']??'');$subId=(string)($object['id']??'');$status=(string)($object['status']??'');$periodEnd=(int)($object['current_period_end']??0);$cancel=!empty($object['cancel_at_period_end'])?1:0;$priceId=(string)($object['items']['data'][0]['price']['id']??'');}
- if($type==='checkout.session.completed'){
+ if(in_array($type,['checkout.session.completed','checkout.session.async_payment_succeeded'],true)){
   if($userId>0&&$customer!==''){$st=$db->prepare('UPDATE users SET billing_customer_id=COALESCE(billing_customer_id,?) WHERE id=?');$st->execute([$customer,$userId]);}
  }
  if(str_starts_with($type,'customer.subscription.')&&$userId>0){
