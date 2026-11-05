@@ -63,7 +63,6 @@ function handleAdminAction(string $action,string $method,array $input): void {
  if($method!=='POST')fail('Operación no disponible.',404);
  if($action==='admin-user-status'){
   $id=integerInput($input,'id',1,PHP_INT_MAX);$status=choice($input,'status',['active','suspended']);$target=query('SELECT id,email FROM users WHERE id=?',[$id])->fetch();if(!$target)fail('Usuario no encontrado.',404);if(strtolower($target['email'])===HOGAR_SUPERADMIN)fail('La cuenta superadmin no se puede suspender.');
-  if($status==='active'){$account=['id'=>(int)$target['id'],'email'=>$target['email'],'email_verified'=>!empty(query('SELECT email_verified_at FROM users WHERE id=?',[$id])->fetchColumn())];$limit=billingPropertyLimit($account);$occupied=(int)query('SELECT COUNT(*) FROM properties WHERE user_id=? AND status IN ("active","paused","draft")',[$id])->fetchColumn();if($limit!==PHP_INT_MAX&&$occupied>$limit)fail('Esta cuenta supera su límite de publicaciones. Archiva o retira los anuncios que exceden su plan antes de reactivarla.',409);}
   if($status==='suspended')query('UPDATE users SET status=?,revoked_at=? WHERE id=?',[$status,microtime(true),$id]);else query('UPDATE users SET status=? WHERE id=?',[$status,$id]);auditAdmin($actor,'user_'.$status,(string)$id);reply(['ok'=>true]);
  }
  if($action==='admin-property-status'){
@@ -74,11 +73,6 @@ function handleAdminAction(string $action,string $method,array $input): void {
    $p=query('SELECT p.id,p.user_id,p.status AS property_status,u.email,u.status AS owner_status,u.email_verified_at FROM properties p JOIN users u ON u.id=p.user_id WHERE p.id=?',[$id])->fetch();
    if(!$p||$p['property_status']==='draft'){$db->rollBack();fail('Publicación no encontrada.',404);}
    if($status==='active'&&($p['owner_status']!=='active'||$p['email_verified_at']===null)){$db->rollBack();fail('Para publicar, la cuenta propietaria debe estar activa y tener el correo confirmado.');}
-   if(in_array($status,['active','paused'],true)&&in_array($p['property_status'],['archived','rented','sold'],true)){
-    $account=['id'=>(int)$p['user_id'],'email'=>$p['email'],'email_verified'=>!empty($p['email_verified_at'])];$limit=billingPropertyLimit($account);
-    $occupied=(int)query('SELECT COUNT(*) FROM properties WHERE user_id=? AND status IN ("active","paused","draft")',[$p['user_id']])->fetchColumn();
-    if($limit!==PHP_INT_MAX&&$occupied>=$limit){$db->rollBack();fail('La cuenta propietaria ya ocupa todos los espacios de su plan. Actualiza el plan o retira otra publicación antes de restaurar esta.',409);}
-   }
    query('UPDATE properties SET status=?,updated=? WHERE id=?',[$status,time(),$id]);
    if($status==='active')confirmPropertyAvailability($id);
    auditAdmin($actor,'property_'.$status,$id);$db->commit();
