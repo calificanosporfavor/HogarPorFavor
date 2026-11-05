@@ -1,0 +1,34 @@
+/* Hogar Por Favor · controles redondeados y estados de interacción claros */
+:where(button:not(.property-image):not(.close), a.button, .plain, .text-link, .hero-image-cta, .auth-tabs button, .mode button, .pagination button) {
+  border-radius: 999px;
+  transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+:where(button:not(.property-image):not(.close), a.button, .plain, .text-link, .hero-image-cta) {
+  cursor: pointer;
+  text-decoration: none;
+}
+:where(button:not(.property-image):not(.close), a.button, .plain, .text-link, .hero-image-cta):focus-visible {
+  outline: 3px solid #539400;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px #8dda0730;
+}
+@media (hover: hover) {
+  :where(button:not(.property-image):not(.close):not(:disabled), a.button, .plain:not(:disabled), .text-link, .hero-image-cta):hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 14px #1820131c;
+  }
+}
+:where(button:not(.property-image):not(.close), a.button, .plain, .text-link, .hero-image-cta):active {
+  transform: translateY(0) scale(.98);
+  box-shadow: 0 1px 3px #18201318;
+}
+:where(button:disabled, .plain:disabled, .button:disabled, [aria-disabled="true"]) {
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(button:not(.property-image):not(.close), a.button, .plain, .text-link, .hero-image-cta, .auth-tabs button, .mode button, .pagination button) {
+    transition: none;
+  }
+}
