@@ -5,7 +5,7 @@
   <title>Planes para publicar | Hogar Por Favor</title>
   <meta name="description" content="Publica gratis en Hogar Por Favor. Compara los planes para asesores inmobiliarios y elige el que se adapte a tu inventario.">
   <meta name="theme-color" content="#8DDA07"><link rel="icon" type="image/png" sizes="96x96" href="favicon.png?v=5">
-  <link rel="canonical" href="https://hogarporfavor.com/planes.html"><link rel="stylesheet" href="style.css?v=36">
+  <link rel="canonical" href="https://hogarporfavor.com/planes.html"><link rel="stylesheet" href="style.css?v=37">
 </head>
 <body>
   <header><a class="brand" href="/" aria-label="Hogar Por Favor, inicio"><img src="logo.png?v=2" width="220" height="50" alt="Hogar Por Favor"></a><a class="text-link" href="/">Volver al sitio</a></header>
@@ -15,14 +15,16 @@
     <p class="legal-version">Planes mensuales en pesos mexicanos. Publicar sigue siendo gratis.</p>
     <section class="plan-options public-plan-options" aria-label="Planes de publicación">
       <article><span class="eyebrow">PARA EMPEZAR</span><h2>Gratis</h2><p class="plan-price">$0 <small>para siempre</small></p><p>De 1 a 3 publicaciones gratis. Incluye fotos, ubicación y contacto directo.</p><a class="button" href="/?auth=register">Crear cuenta gratis</a></article>
-      <article><span class="eyebrow">MÁS ESPACIO</span><h2>Asesor</h2><p class="plan-price">$99 <small>MXN / mes</small></p><p>Hasta 10 publicaciones activas para una persona asesora.</p><a class="button" href="/?billing_plan=advisor">Elegir Asesor</a></article>
-      <article><span class="eyebrow">MÁS VISIBILIDAD</span><h2>Asesor Plus</h2><p class="plan-price">$200 <small>MXN / mes</small></p><p>Hasta 25 publicaciones y estadísticas de visitas, favoritos y clics de contacto.</p><a class="button" href="/?billing_plan=advisor_plus">Elegir Asesor Plus</a></article>
-      <article><span class="eyebrow">MÁS ALCANCE</span><h2>Ilimitado</h2><p class="plan-price">$300 <small>MXN / mes</small></p><p>Publicaciones sin límite, estadísticas y 4 destacados al mes. Cada destacado dura 7 días.</p><a class="button" href="/?billing_plan=advisor_unlimited">Elegir Ilimitado</a></article>
+      <article><span class="eyebrow">MÁS ESPACIO</span><h2>Asesor</h2><p class="plan-price">$99 <small>MXN / mes</small></p><p>Hasta 10 publicaciones activas para una persona asesora.</p><a class="button" href="/?billing_plan=advisor" data-subscribe-plan="advisor">Suscríbete</a></article>
+      <article><span class="eyebrow">MÁS VISIBILIDAD</span><h2>Asesor Plus</h2><p class="plan-price">$199 <small>MXN / mes</small></p><p>Hasta 25 publicaciones y estadísticas de visitas, favoritos y clics de contacto.</p><a class="button" href="/?billing_plan=advisor_plus" data-subscribe-plan="advisor_plus">Suscríbete</a></article>
+      <article><span class="eyebrow">MÁS ALCANCE</span><h2>Ilimitado</h2><p class="plan-price">$299 <small>MXN / mes</small></p><p>Publicaciones sin límite, estadísticas y 4 destacados al mes. Cada destacado dura 7 días.</p><a class="button" href="/?billing_plan=advisor_unlimited" data-subscribe-plan="advisor_unlimited">Suscríbete</a></article>
     </section>
     <aside class="care-note"><strong>Simple y transparente.</strong><p>Los planes pagados son opcionales. El importe final y los impuestos aplicables se muestran antes de contratar. No garantizamos consultas ni operaciones; verifica la información de cada inmueble antes de tomar una decisión.</p></aside>
     <p>Los límites cuentan propiedades activas, pausadas y en borrador. Las propiedades marcadas como rentadas o vendidas liberan un espacio. Consulta las <a class="text-link" href="suscripciones.html">condiciones de suscripción</a> y el <a class="text-link" href="privacidad.html">aviso de privacidad</a>.</p>
-    <p>Al elegir un plan, inicia sesión o crea tu cuenta gratis. Después podrás aceptar las condiciones y continuar a Stripe para revisar el cobro antes de confirmar. No se realiza ningún cargo al elegir un plan.</p>
+    <p>Al suscribirte, inicia sesión o crea tu cuenta gratis. Acepta las condiciones y revisa el cobro mensual en Stripe antes de confirmar. No se realiza ningún cargo por elegir un plan.</p>
     <a class="button" href="/?auth=register">Crear cuenta gratis</a>
   </main>
+  <dialog id="subscribe-dialog" aria-labelledby="subscribe-title"><button class="close" type="button" aria-label="Cerrar" data-subscribe-close>×</button><span class="eyebrow">SUSCRIPCIÓN SEGURA</span><h2 id="subscribe-title">Continúa a Stripe.</h2><p id="subscribe-summary"></p><form id="subscribe-form"><label class="check-label"><input id="subscribe-terms" type="checkbox" required><span>Acepto las <a href="/suscripciones.html" target="_blank" rel="noopener">condiciones de suscripción</a>.</span></label><button class="button full" type="submit">Continuar a Stripe</button><p id="subscribe-status" class="form-status" role="status"></p></form></dialog>
+  <script src="planes.js?v=1" defer></script>
 </body>
 </html>
