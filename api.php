@@ -231,6 +231,30 @@ if(in_array($action,['create','update','draft-save'],true) && $method==='POST') 
   } catch(Throwable $e) {if($db->inTransaction())$db->rollBack();foreach($prepared as $ph)@unlink($dataDir.'/photos/'.$ph['file']);if($e instanceof InvalidArgumentException)fail($e->getMessage());throw $e;}
   reply(['property'=>propertyData(selectProperty($id),true),'message'=>$draft?'Borrador guardado. Solo tú puedes verlo desde Mi cuenta.':'Publicación guardada correctamente.'],$action==='create'?201:200);
 }
+if($action==='delete-property' && $method==='POST') {
+  global $db,$dataDir;
+  $u=requireUser();limitRate('delete-property',10,3600);
+  if(($input['confirm_delete']??null)!==true)fail('Confirma que deseas eliminar esta publicación y sus fotos.');
+  $id=strvalInput($input,'id',24,24);$p=selectProperty($id);
+  if(!$p||(int)$p['user_id']!==(int)$u['id']||$p['status']==='archived')fail('Anuncio no disponible.',404);
+  $stage=$dataDir.'/erase-'.bin2hex(random_bytes(16));$staged=[];
+  $db->exec('PRAGMA secure_delete=ON');$db->exec('BEGIN IMMEDIATE');
+  try {
+    $photos=query('SELECT file FROM photos WHERE property_id=?',[$id])->fetchAll(PDO::FETCH_COLUMN);
+    if($photos&&!mkdir($stage,0700))throw new RuntimeException('Deletion staging unavailable');
+    foreach($photos as $file){if(!preg_match('/^[a-f0-9]{32}\\.jpg$/D',$file))throw new RuntimeException('Invalid stored photo name');$from=$dataDir.'/photos/'.$file;if(!is_file($from))continue;if(!rename($from,$stage.'/'.$file))throw new RuntimeException('Cannot stage photo deletion');$staged[]=$file;}
+    query('DELETE FROM properties WHERE id=? AND user_id=?',[$id,$u['id']]);
+    if($db->changes()!==1)throw new RuntimeException('Property deletion failed');
+    $db->exec('COMMIT');
+  } catch(Throwable $e) {
+    if($db->inTransaction())$db->exec('ROLLBACK');
+    foreach($staged as $file)@rename($stage.'/'.$file,$dataDir.'/photos/'.$file);
+    @rmdir($stage);throw $e;
+  }
+  if(is_dir($stage))@touch($stage.'/.ready');
+  $clean=cleanupDeletedPhotos()&&!is_dir($stage);
+  reply(['ok'=>true,'photos_pending'=>!$clean,'message'=>$clean?'La publicación y sus fotos se eliminaron.':'La publicación se eliminó; estamos terminando de retirar las fotos.']);
+}
 if($action==='status' && $method==='POST') {$u=requireUser();$id=strvalInput($input,'id',24,24);$status=choice($input,'status',['active','paused','rented','sold']);$p=selectProperty($id);if(!$p||(int)$p['user_id']!==(int)$u['id'])fail('Anuncio no disponible.',404);if($p['status']==='draft')fail('Completa el borrador desde Mi cuenta para publicarlo.',409);if($p['status']==='archived')fail('La publicación está archivada por administración.',403);validatePropertyOutcome($status,$p['operation']);if($status==='active'){requireVerified($u);requireTerms($input);}$opensPropertySlot=$status==='active'&&!in_array($p['status'],['active','paused','draft'],true);$propertyLimit=billingPropertyLimit($u);if($opensPropertySlot&&(int)$propertyLimit!==PHP_INT_MAX&&(int)query('SELECT COUNT(*) FROM properties WHERE user_id=? AND status IN ("active","paused","draft")',[$u['id']])->fetchColumn()>=$propertyLimit)fail(billingLimitMessage($u));$db->beginTransaction();$propertyLimit=billingPropertyLimit($u);if($opensPropertySlot&&(int)$propertyLimit!==PHP_INT_MAX&&(int)query('SELECT COUNT(*) FROM properties WHERE user_id=? AND status IN ("active","paused","draft")',[$u['id']])->fetchColumn()>=$propertyLimit){$db->rollBack();fail(billingLimitMessage($u));}query('UPDATE properties SET status=?,updated=? WHERE id=?',[ $status,time(),$id]);if($status==='active'){confirmPropertyAvailability($id);recordTerms((int)$u['id'],'reactivate',$id);}$db->commit();reply(['ok'=>true]);}
 if(in_array($action,['billing-status','billing-checkout','billing-portal','billing-feature'],true)){handleStripeBilling($action,$method,$input);}
 if($action==='report' && $method==='POST') {$u=requireUser();limitRate('report',10,3600);$id=strvalInput($input,'id',24,24);$reason=strvalInput($input,'reason',10,1000);$p=selectProperty($id);if(!$p||$p['status']!=='active')fail('Anuncio no disponible.',404);query('INSERT INTO reports(property_id,user_id,reason,created) VALUES(?,?,?,?) ON CONFLICT(property_id,user_id) DO UPDATE SET reason=excluded.reason,created=excluded.created,resolved_at=NULL',[$id,$u['id'],$reason,time()]);reply(['ok'=>true]);}
