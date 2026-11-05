@@ -10,12 +10,12 @@ return [
  'webhook_secret'=>'',
  'price_ids_test'=>[
   'advisor'=>'price_1UYDZlEc2x5xSI7gyEm9TjOT',
-  'advisor_plus'=>'price_1UYDZrEc2x5xSI7g7q2mpYP6',
-  'advisor_unlimited'=>'price_1UYDZsEc2x5xSI7gq2OwEGts',
+  'advisor_plus'=>'price_1UYHOdEc2x5xSI7goPl6uz3Y',
+  'advisor_unlimited'=>'price_1UYHOdEc2x5xSI7gU6beuqcd',
  ],
  'price_ids_live'=>[
   'advisor'=>'price_1UYDjaICz2Enrh7I6BrbfO9f',
-  'advisor_plus'=>'price_1UYDjaICz2Enrh7IhtYlpTo0',
-  'advisor_unlimited'=>'price_1UYDjcICz2Enrh7IQAj6tW8d',
+  'advisor_plus'=>'price_1UYHNaICz2Enrh7IB232Eu3C',
+  'advisor_unlimited'=>'price_1UYHNaICz2Enrh7ITt2KbiQd',
  ],
 ];
