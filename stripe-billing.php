@@ -52,7 +52,7 @@ function billingPropertyLimit(?array $u): int {
 }
 function billingLimitMessage(?array $u): string {
  $plan=billingEffectivePlan($u);$limit=billingPropertyLimit($u);
- if(in_array($plan,['basic','superadmin'],true))return 'Tu cuenta gratis incluye hasta 3 publicaciones. Puedes ampliar a 10 por $99 al mes, hasta 25 con estadísticas por $200 o publicar sin límite por $300 al mes con 4 espacios destacados de 7 días cada mes.';
+ if($plan==='superadmin')return 'El acceso superadmin no amplía el límite de publicación: esta cuenta puede ocupar hasta 3 espacios. Archiva o elimina una propiedad antes de publicar otra.';if($plan==='basic')return 'Tu cuenta gratis incluye de 1 a 3 publicaciones. Puedes ampliar a 10 por $99 al mes, hasta 25 con estadísticas por $200 o publicar sin límite por $300 al mes con 4 espacios destacados de 7 días cada mes.';
  return 'Tu plan incluye hasta '.$limit.' propiedades activas, pausadas o en borrador. Libera un espacio marcando una como rentada o vendida, o revisa las opciones de tu plan en Mi cuenta.';
 }
 function billingHasAnalytics(?array $u): bool { return in_array(billingEffectivePlan($u),['advisor_plus','advisor_unlimited','superadmin'],true); }
