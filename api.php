@@ -157,6 +157,11 @@ if ($action==='recover' && $method==='POST') {
   rotateSession(); $_SESSION['uid']=(int)$u['id']; $_SESSION['auth']=hash('sha256',(string)query('SELECT password FROM users WHERE id=?',[$u['id']])->fetchColumn()); $_SESSION['csrf']=bin2hex(random_bytes(32)); reply(['user'=>user(),'csrf'=>$_SESSION['csrf'],'recovery'=>$newCode]);
 }
 if ($action==='logout' && $method==='POST') { $_SESSION=[]; rotateSession(); $_SESSION['csrf']=bin2hex(random_bytes(32)); reply(['csrf'=>$_SESSION['csrf']]); }
+if ($action==='featured-list' && $method==='GET') {
+  $now=time();
+  $rows=query('SELECT p.*,u.name AS owner_name FROM billing_feature_claims f JOIN properties p ON p.id=f.property_id JOIN users u ON u.id=p.user_id WHERE f.starts_at<=? AND f.expires_at>? AND p.status="active" AND u.status="active" AND u.email_verified_at IS NOT NULL ORDER BY f.starts_at DESC,f.id DESC LIMIT 40',[$now,$now])->fetchAll();
+  reply(['properties'=>array_map(fn($p)=>propertyData($p),$rows),'server_time'=>$now]);
+}
 if ($action==='list' && $method==='GET') {
   $where=['p.status="active"','EXISTS(SELECT 1 FROM users owner WHERE owner.id=p.user_id AND owner.status="active")']; $params=[];
   foreach(['state','city','neighborhood'] as $field){$value=$_GET[$field]??'';if(!is_string($value)||mb_strlen($value)>100)fail('Filtro de ubicación inválido.');if(trim($value)!==''){$function=$field==='state'?'state_key':'location_key';$where[]=$function.'(p.'.$field.')=?';$params[]=$function($value);}}
