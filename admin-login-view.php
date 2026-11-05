@@ -7,7 +7,7 @@
   <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png?v=5">
   <link rel="stylesheet" href="/style.css?v=32"><link rel="stylesheet" href="/admin.css?v=5">
   <script src="/admin-login.js?v=1" defer></script>
-<link rel="stylesheet" href="/interactions.css?v=1"></head>
+<link rel="stylesheet" href="/interactions-v2.css?v=1"></head>
 <body class="admin-page">
   <header><a class="brand" href="/" aria-label="Hogar Por Favor, inicio"><img src="/logo.png?v=2" alt="Hogar Por Favor" width="220" height="50"></a><span class="admin-label">ACCESO RESERVADO</span><a class="text-link" href="/">Ver sitio</a></header>
   <main class="admin-main">
