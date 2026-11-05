@@ -47,12 +47,12 @@ function billingEffectivePlan(?array $u): string {
 }
 function billingPropertyLimit(?array $u): int {
  $plan=billingEffectivePlan($u);
- if($plan==='superadmin')return PHP_INT_MAX;
+ if($plan==='superadmin')return HOGAR_BILLING_PLANS['basic']['limit'];
  return HOGAR_BILLING_PLANS[$plan]['limit']??3;
 }
 function billingLimitMessage(?array $u): string {
  $plan=billingEffectivePlan($u);$limit=billingPropertyLimit($u);
- if($plan==='basic')return 'Tu cuenta gratis incluye hasta 3 publicaciones. Puedes ampliar a 10 por $99 al mes, hasta 25 con estadísticas por $200 o publicar sin límite por $300 al mes con 4 espacios destacados de 7 días cada mes.';
+ if($plan==='superadmin')return 'El acceso superadmin no amplía el límite de publicación: esta cuenta puede ocupar hasta 3 espacios. Archiva o elimina una propiedad antes de publicar otra.';if($plan==='basic')return 'Tu cuenta gratis incluye de 1 a 3 publicaciones. Puedes ampliar a 10 por $99 al mes, hasta 25 con estadísticas por $200 o publicar sin límite por $300 al mes con 4 espacios destacados de 7 días cada mes.';
  return 'Tu plan incluye hasta '.$limit.' propiedades activas, pausadas o en borrador. Libera un espacio marcando una como rentada o vendida, o revisa las opciones de tu plan en Mi cuenta.';
 }
 function billingHasAnalytics(?array $u): bool { return in_array(billingEffectivePlan($u),['advisor_plus','advisor_unlimited','superadmin'],true); }
@@ -69,7 +69,7 @@ function handleStripeBilling(string $action,string $method,array $input): void {
   $u=requireUser();$plan=billingEffectivePlan($u);$row=query('SELECT billing_status,billing_current_period_end,billing_cancel_at_period_end,billing_customer_id FROM users WHERE id=?',[$u['id']])->fetch();
   $count=(int)query('SELECT COUNT(*) FROM properties WHERE user_id=? AND status IN ("active","paused","draft")',[$u['id']])->fetchColumn();$featureUsed=(int)query('SELECT COUNT(*) FROM billing_feature_claims WHERE user_id=? AND month_key=?',[$u['id'],billingFeatureMonth()])->fetchColumn();$config=stripeBillingConfig();$pricesReady=true;foreach(['advisor','advisor_plus','advisor_unlimited'] as $pricePlan)$pricesReady=$pricesReady&&preg_match('/^price_[A-Za-z0-9]+$/',(string)($config['price_ids'][$pricePlan]??''))===1;
   $webhookReady=preg_match('/^whsec_[A-Za-z0-9_]+$/',(string)($config['webhook_secret']??''))===1;
-  reply(['plan'=>$plan,'name'=>$plan==='superadmin'?'Superadmin':(HOGAR_BILLING_PLANS[$plan]['name']??'Gratis'),'limit'=>in_array($plan,['superadmin','advisor_unlimited'],true)?null:billingPropertyLimit($u),'occupied'=>$count,'feature_used'=>$featureUsed,'feature_remaining'=>$plan==='advisor_unlimited'?max(0,4-$featureUsed):0,'status'=>$row['billing_status']??'none','period_end'=>(int)($row['billing_current_period_end']??0),'cancel_at_period_end'=>(bool)($row['billing_cancel_at_period_end']??false),'manage_available'=>!empty($row['billing_customer_id'])&&$config['billing_enabled']&&stripeModeMatchesKey($config)&&$webhookReady,'checkout_available'=>$config['billing_enabled']&&stripeModeMatchesKey($config)&&$webhookReady&&$pricesReady&&$u['email_verified']]);
+  reply(['plan'=>$plan,'name'=>$plan==='superadmin'?'Superadmin':(HOGAR_BILLING_PLANS[$plan]['name']??'Gratis'),'limit'=>$plan==='advisor_unlimited'?null:billingPropertyLimit($u),'occupied'=>$count,'feature_used'=>$featureUsed,'feature_remaining'=>$plan==='advisor_unlimited'?max(0,4-$featureUsed):0,'status'=>$row['billing_status']??'none','period_end'=>(int)($row['billing_current_period_end']??0),'cancel_at_period_end'=>(bool)($row['billing_cancel_at_period_end']??false),'manage_available'=>!empty($row['billing_customer_id'])&&$config['billing_enabled']&&stripeModeMatchesKey($config)&&$webhookReady,'checkout_available'=>$config['billing_enabled']&&stripeModeMatchesKey($config)&&$webhookReady&&$pricesReady&&$u['email_verified']]);
  }
  if($action==='billing-checkout'&&$method==='POST'){
   $u=requireUser();requireVerified($u);if(!hash_equals($_SESSION['csrf'],(string)($_SERVER['HTTP_X_CSRF_TOKEN']??'')))fail('Actualiza la página e inténtalo de nuevo.',403);
