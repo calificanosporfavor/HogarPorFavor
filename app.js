@@ -79,7 +79,7 @@ async function showAccount(){
  $('#account-status').textContent='Cargando tus propiedades…';$('#billing-status').textContent='Cargando opciones de publicación…';
  try{
   const data=await api('mine');shownMine=data.properties;window.hogarDrafts.render(data.properties.filter(p=>p.status==='draft'));
-  const published=data.properties.filter(p=>p.status!=='draft');$('#my-properties').innerHTML=published.length?published.map(p=>propertyCard(p,true)).join(''):'<div class="property-empty"><h4>Aún no tienes propiedades publicadas.</h4><p>Cuando publiques una propiedad aparecerá aquí. Puedes administrarla, pausarla o eliminarla desde esta sección.</p><button class="button" type="button" data-open>Publicar propiedad</button></div>';
+  const published=data.properties.filter(p=>p.status!=='draft');$('#my-properties').innerHTML=published.length?published.map(p=>propertyCard(p,true)).join(''):'<div class="property-empty"><h4>Aún no tienes propiedades publicadas.</h4><p>Cuando publiques una propiedad aparecerá aquí. Puedes administrarla, pausarla o eliminarla desde esta sección.</p><p>Usa “Publicar otra propiedad” para crear un anuncio nuevo.</p></div>';
   bindCards($('#my-properties'));const active=published.filter(p=>p.status==='active').length;
   $('#account-status').textContent=published.length?`Tienes ${published.length} ${published.length===1?'propiedad':'propiedades'} en tu cuenta; ${active} ${active===1?'está':'están'} pública${active===1?'':'s'}.`:'Todavía no tienes propiedades publicadas.';
  }catch(e){$('#my-properties').innerHTML='<div class="property-empty"><h4>No pudimos cargar tus propiedades.</h4><p>Tu cuenta y publicaciones se conservan. Actualiza la lista para intentarlo de nuevo.</p></div>';$('#account-status').textContent=e.message;}
