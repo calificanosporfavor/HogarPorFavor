@@ -23,11 +23,29 @@ function handleAdminAction(string $action,string $method,array $input): void {
  if($action==='admin-summary'&&$method==='GET'){
   reply(['users'=>(int)query('SELECT COUNT(*) FROM users')->fetchColumn(),'verified'=>(int)query('SELECT COUNT(*) FROM users WHERE email_verified_at IS NOT NULL')->fetchColumn(),'suspended'=>(int)query('SELECT COUNT(*) FROM users WHERE status="suspended"')->fetchColumn(),'properties'=>(int)query('SELECT COUNT(*) FROM properties')->fetchColumn(),'active'=>(int)query('SELECT COUNT(*) FROM properties p JOIN users u ON u.id=p.user_id WHERE p.status="active" AND u.status="active"')->fetchColumn(),'reports'=>(int)query('SELECT (SELECT COUNT(*) FROM reports WHERE resolved_at IS NULL)+(SELECT COUNT(*) FROM roomie_reports WHERE resolved_at IS NULL)+(SELECT COUNT(*) FROM community_reports WHERE resolved_at IS NULL)')->fetchColumn()]);
  }
+ if($action==='admin-financials'&&$method==='GET'){
+  $now=time();$counts=['basic'=>0,'advisor'=>0,'advisor_plus'=>0,'advisor_unlimited'=>0,'superadmin'=>0];$active=0;$trialing=0;$pastDue=0;$canceling=0;$mrr=0;$overLimit=0;
+  $users=query('SELECT id,email,email_verified_at,billing_plan,billing_status,billing_current_period_end,billing_cancel_at_period_end,(SELECT COUNT(*) FROM properties p WHERE p.user_id=users.id AND p.status IN ("active","paused","draft")) AS occupied FROM users')->fetchAll();
+  foreach($users as $row){
+   $account=['id'=>(int)$row['id'],'email'=>$row['email'],'email_verified'=>!empty($row['email_verified_at'])];
+   $plan=billingEffectivePlan($account);$counts[$plan]=($counts[$plan]??0)+1;$limit=billingPropertyLimit($account);
+   if($limit!==PHP_INT_MAX&&(int)$row['occupied']>$limit)$overLimit++;
+   $status=(string)($row['billing_status']??'none');$end=(int)($row['billing_current_period_end']??0);
+   if($plan!=='superadmin'&&$plan!=='basic'&&$status==='active'&&$end>$now){$active++;$mrr+=(int)HOGAR_BILLING_PLANS[$plan]['amount'];}
+   if($status==='trialing'&&$end>$now)$trialing++;
+   if($status==='past_due'&&$end+7*86400>$now)$pastDue++;
+   if(!empty($row['billing_cancel_at_period_end'])&&$end>$now)$canceling++;
+  }
+  $cfg=stripeBillingConfig();$webhookReady=preg_match('/^whsec_[A-Za-z0-9_]+$/',(string)($cfg['webhook_secret']??''))===1;
+  $lastWebhook=null;if(query('SELECT 1 FROM sqlite_master WHERE type="table" AND name="stripe_webhook_events"')->fetchColumn())$lastWebhook=(int)(query('SELECT MAX(received_at) FROM stripe_webhook_events')->fetchColumn()?:0)?:null;
+  $distribution=[];foreach(['basic','advisor','advisor_plus','advisor_unlimited','superadmin'] as $key){$definition=$key==='superadmin'?['name'=>'Superadmin','limit'=>3,'amount'=>0]:(HOGAR_BILLING_PLANS[$key]??[]);$distribution[]=['plan'=>$key,'name'=>$definition['name']??$key,'limit'=>$key==='advisor_unlimited'?null:($definition['limit']??3),'amount'=>(int)($definition['amount']??0),'users'=>$counts[$key]??0];}
+  reply(['users'=>count($users),'plans'=>$distribution,'active_subscriptions'=>$active,'trialing_subscriptions'=>$trialing,'past_due_subscriptions'=>$pastDue,'canceling_subscriptions'=>$canceling,'estimated_mrr'=>$mrr,'basic_over_limit'=>$overLimit,'billing_enabled'=>!empty($cfg['billing_enabled'])&&stripeModeMatchesKey($cfg)&&$webhookReady,'last_webhook_at'=>$lastWebhook]);
+ }
  if($action==='admin-users'&&$method==='GET'){
   $q=adminSearch();$page=max(1,(int)($_GET['page']??1));$where='1=1';$args=[];if($q!==''){$where='(instr(lower(name),lower(?))>0 OR instr(lower(email),lower(?))>0)';$args=[$q,$q];}
   $total=(int)query('SELECT COUNT(*) FROM users WHERE '.$where,$args)->fetchColumn();$offset=min(1000000,($page-1)*20);
-  $rows=query('SELECT id,name,email,created,status,email_verified_at,(SELECT COUNT(*) FROM properties p WHERE p.user_id=users.id) AS property_count FROM users WHERE '.$where.' ORDER BY created DESC,id DESC LIMIT 20 OFFSET '.$offset,$args)->fetchAll();
-  foreach($rows as &$r){$r['protected']=strtolower($r['email'])===HOGAR_SUPERADMIN;}$rows=array_values($rows);
+  $rows=query('SELECT id,name,email,created,status,email_verified_at,billing_plan,billing_status,billing_current_period_end,billing_cancel_at_period_end,(SELECT COUNT(*) FROM properties p WHERE p.user_id=users.id) AS property_count,(SELECT COUNT(*) FROM properties p WHERE p.user_id=users.id AND p.status IN ("active","paused","draft")) AS occupied_count FROM users WHERE '.$where.' ORDER BY created DESC,id DESC LIMIT 20 OFFSET '.$offset,$args)->fetchAll();
+  foreach($rows as &$r){$r['protected']=strtolower($r['email'])===HOGAR_SUPERADMIN;$account=['id'=>(int)$r['id'],'email'=>$r['email'],'email_verified'=>!empty($r['email_verified_at'])];$r['effective_plan']=billingEffectivePlan($account);$r['plan_name']=$r['effective_plan']==='superadmin'?'Superadmin':(HOGAR_BILLING_PLANS[$r['effective_plan']]['name']??'Gratis');$r['plan_limit']=$r['effective_plan']==='advisor_unlimited'?null:billingPropertyLimit($account);$r['over_limit']=$r['plan_limit']!==null&&(int)$r['occupied_count']>(int)$r['plan_limit'];$r['period_end']=(int)$r['billing_current_period_end'];}unset($r);$rows=array_values($rows);
   reply(['items'=>$rows,'total'=>$total,'page'=>$page,'pages'=>(int)ceil($total/20)]);
  }
  if($action==='admin-properties'&&$method==='GET'){
