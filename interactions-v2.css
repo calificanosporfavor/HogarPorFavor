@@ -1,0 +1,73 @@
+/* Hogar Por Favor · botones redondos y fáciles de reconocer */
+button:not(.property-image):not(.close),
+a.button,
+.button,
+.plain,
+.text-link,
+.hero-image-cta,
+.auth-tabs button,
+.mode button,
+.pagination button {
+  border-radius: 999px;
+  transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+button:not(.property-image):not(.close),
+a.button,
+.button,
+.plain,
+.text-link,
+.hero-image-cta {
+  cursor: pointer;
+  text-decoration: none;
+}
+button:not(.property-image):not(.close):focus-visible,
+a.button:focus-visible,
+.button:focus-visible,
+.plain:focus-visible,
+.text-link:focus-visible,
+.hero-image-cta:focus-visible {
+  outline: 3px solid #539400;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px #8dda0730;
+}
+@media (hover: hover) {
+  button:not(.property-image):not(.close):not(:disabled):hover,
+  a.button:hover,
+  .button:hover,
+  .plain:not(:disabled):hover,
+  .text-link:hover,
+  .hero-image-cta:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 14px #1820131c;
+  }
+}
+button:not(.property-image):not(.close):active,
+a.button:active,
+.button:active,
+.plain:active,
+.text-link:active,
+.hero-image-cta:active {
+  transform: translateY(0) scale(.98);
+  box-shadow: 0 1px 3px #18201318;
+}
+button:disabled,
+.plain:disabled,
+.button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  button:not(.property-image):not(.close),
+  a.button,
+  .button,
+  .plain,
+  .text-link,
+  .hero-image-cta,
+  .auth-tabs button,
+  .mode button,
+  .pagination button {
+    transition: none;
+  }
+}
