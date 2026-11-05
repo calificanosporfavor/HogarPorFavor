@@ -12,7 +12,7 @@
   <header><a class="brand" href="/" aria-label="Hogar Por Favor, inicio"><img src="/logo.png?v=2" alt="Hogar Por Favor" width="220" height="50"></a><span class="admin-label">ACCESO RESERVADO</span><a class="text-link" href="/">Ver sitio</a></header>
   <main class="admin-main">
     <section id="admin-access" aria-labelledby="admin-login-title">
-      <span class="eyebrow">ADMINISTRACIÓN · IMPERIO PORFAVOR</span>
+      <span class="eyebrow">ADMINISTRACIÓN · HOGAR POR FAVOR</span>
       <h1 id="admin-login-title">Entra a tu panel.</h1>
       <p>El panel y sus datos son exclusivos de la cuenta superadmin con correo confirmado.</p>
       <form id="admin-login">

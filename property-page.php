@@ -137,7 +137,7 @@ header('Content-Type: text/html; charset=utf-8');
       <div class="listing-actions"><a class="plain" href="/?prop=<?= propertyPageEscape($id) ?>">Ver ficha y opciones de la comunidad</a><a class="plain" href="/">Buscar otra propiedad</a></div>
     </section>
   </article>
-  <footer class="listing-footer">Hogar Por Favor · Imperio Porfavor · <a href="/terminos.html">Términos</a> · <a href="/privacidad.html">Privacidad</a></footer>
+  <footer class="listing-footer">Hogar Por Favor · <a href="/terminos.html">Términos</a> · <a href="/privacidad.html">Privacidad</a></footer>
 </main>
 </body>
 </html>

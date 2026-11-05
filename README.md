@@ -1,6 +1,6 @@
 # Hogar Por Favor
 
-Plataforma inmobiliaria inicial de hogarporfavor.com, un proyecto de Imperio Porfavor. HTML, CSS, JavaScript y PHP 8.1+ con PDO SQLite, mbstring, fileinfo y GD. Sin dependencias de compilación.
+Plataforma inmobiliaria de hogarporfavor.com, construida con HTML, CSS, JavaScript y PHP 8.1+ con PDO SQLite, mbstring, fileinfo y GD. Sin dependencias de compilación.
 
 ## Estado real
 
