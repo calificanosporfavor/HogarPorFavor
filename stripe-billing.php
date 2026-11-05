@@ -33,7 +33,8 @@ function stripeBillingConfig(): array {
 }
 function stripeModeMatchesKey(array $config): bool {
  $mode=(string)($config['mode']??'');$key=(string)($config['secret_key']??'');
- return ($mode==='test'&&preg_match('/^sk_test_[A-Za-z0-9_]+$/',$key)===1)||($mode==='live'&&preg_match('/^sk_live_[A-Za-z0-9_]+$/',$key)===1);
+ // Stripe restricted keys (rk_*) are accepted only with their resource permissions scoped to this integration.
+ return ($mode==='test'&&preg_match('/^(sk|rk)_test_[A-Za-z0-9_]+$/',$key)===1)||($mode==='live'&&preg_match('/^(sk|rk)_live_[A-Za-z0-9_]+$/',$key)===1);
 }
 function billingEffectivePlan(?array $u): string {
  if(!$u)return 'basic';
